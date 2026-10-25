@@ -45,11 +45,15 @@ A fila fica gravada em `state/github-sync/` e sobrevive a falhas, atualizações
 
 ## Atualizar a partir da v1.0.0
 
+A v1.1.1 corrige um arquivo auxiliar de TLS omitido nos executáveis v1.0.0 e v1.1.0. Se a consulta de versões falhar com `[Errno 2] No such file or directory`, mantenha o Docs Local aberto, extraia o pacote `Reparar-Atualizacao-DocsLocal.zip` da release v1.1.1 e execute `repair-update-tls.ps1` no PowerShell. O script recompõe somente o recurso ausente na pasta temporária da instância em execução, mantendo a validação TLS original. Em seguida, use **Verificar atualizações** na bandeja. Alternativamente, encerre o aplicativo e substitua o executável pelo `DocsLocal.exe` da release; a pasta de dados é preservada.
+
 A v1.0.0 reconhece releases estáveis com os assets `DocsLocal.exe` e `DocsLocal.exe.sha256`, e usa um helper `--apply-update` compatível com a v1.1.0. A primeira transição usa a confirmação nativa da v1.0.0; o modal com atualização automática passa a funcionar na versão nova. A pasta `%LOCALAPPDATA%\\DocsLocal` é preservada. Sessões registradas por outro OAuth App podem exigir um novo login pelo Device Flow.
 
 ## Criar o executável
 
 No Windows, compile a interface, instale `requirements-build.txt` e execute `scripts/build-windows.ps1`. O executável e seu checksum SHA-256 são criados em `dist/`.
+
+A build inclui os recursos TLS exigidos pela distribuição do Python e executa um teste TLS no próprio `.exe` antes de gerar o checksum. Para conferir também a consulta HTTPS ao GitHub, execute `DocsLocal.exe --check-update-network C:\caminho\relatorio.json`; o relatório registra se a conexão e a validação dos certificados funcionaram.
 
 Para publicar outra versão, atualize `app/version.py`, reconstrua o executável e envie o commit para o GitHub. Publique uma release estável com tag `vMAJOR.MINOR.PATCH` e os arquivos `DocsLocal.exe` e `DocsLocal.exe.sha256`, mantendo esses nomes. Exemplo com o GitHub CLI:
 
