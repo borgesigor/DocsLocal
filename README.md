@@ -27,7 +27,7 @@ O servidor aceita somente loopback (`127.0.0.1`, `localhost` ou `::1`) e não of
 
 ## Login com GitHub
 
-Clique em **Logar com GitHub**, copie o código mostrado pelo Docs Local e informe-o na página oficial do GitHub que será aberta. Autorize o aplicativo; o Docs Local detecta a autorização automaticamente e conecta sua conta. Se o navegador bloquear a janela, use **Abrir GitHub** no diálogo. O código expira em até 15 minutos e o login pode ser cancelado no aplicativo.
+Clique em **Logar com GitHub**, copie o código mostrado pelo Docs Local e informe-o na página oficial do GitHub que será aberta. Autorize o aplicativo; o Docs Local detecta a autorização automaticamente e conecta sua conta. O GitHub abre em uma aba normal, sem pop-up. Depois de autorizar, volte à aba do Docs Local. Se a abertura for bloqueada pelo navegador, use **Abrir GitHub** no diálogo. O código expira em até 15 minutos e o login pode ser cancelado no aplicativo.
 
 O Client ID público do OAuth App do Docs Local é fixo no código. Nenhum usuário precisa registrar outro OAuth App, informar credenciais de desenvolvedor ou fornecer um Client Secret. O Device Flow não requer serviço web intermediário. Os tokens da sessão ficam protegidos pelo Windows DPAPI.
 

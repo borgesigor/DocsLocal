@@ -47,7 +47,6 @@ export function GitHubLogin({
     null
   )
   const attemptRef = React.useRef<DeviceAuthorization | null>(null)
-  const authWindow = React.useRef<Window | null>(null)
   const generation = React.useRef(0)
   const onConnectedRef = React.useRef(onConnected)
 
@@ -59,7 +58,6 @@ export function GitHubLogin({
     () => () => {
       generation.current += 1
       cancelAuthorization(attemptRef.current)
-      authWindow.current?.close()
     },
     []
   )
@@ -68,7 +66,6 @@ export function GitHubLogin({
     generation.current += 1
     cancelAuthorization(attemptRef.current)
     attemptRef.current = null
-    authWindow.current?.close()
     setAttempt(null)
     setStarting(false)
   }
@@ -82,7 +79,6 @@ export function GitHubLogin({
     function finish() {
       attemptRef.current = null
       setAttempt(null)
-      authWindow.current?.close()
     }
 
     async function poll() {
@@ -108,7 +104,6 @@ export function GitHubLogin({
         if (result.status === "authenticated") {
           finish()
           toast.success("Conta GitHub conectada")
-          window.focus()
           try {
             await onConnectedRef.current()
           } catch {
@@ -140,14 +135,12 @@ export function GitHubLogin({
 
   async function startLogin() {
     const currentGeneration = ++generation.current
-    // Open during the click so browsers do not block the authorization window.
-    const popup = window.open(
-      "about:blank",
+    // Open a regular browser tab directly from the click, before awaiting the API.
+    window.open(
+      "https://github.com/login/device",
       "_blank",
-      "popup,width=700,height=760"
+      "noopener,noreferrer"
     )
-    if (popup) popup.opener = null
-    authWindow.current = popup
     setStarting(true)
     setConnectionError(null)
     try {
@@ -160,14 +153,11 @@ export function GitHubLogin({
       }
       if (generation.current !== currentGeneration) {
         cancelAuthorization(nextAttempt)
-        popup?.close()
         return
       }
       attemptRef.current = nextAttempt
       setAttempt(nextAttempt)
-      popup?.location.replace(result.verification_uri)
     } catch (error) {
-      popup?.close()
       if (generation.current === currentGeneration) {
         toast.error(
           error instanceof Error
@@ -212,8 +202,9 @@ export function GitHubLogin({
           <DialogHeader>
             <DialogTitle>Autorizar no GitHub</DialogTitle>
             <DialogDescription>
-              Na página oficial do GitHub, informe este código e autorize o Docs
-              Local. A conexão será concluída automaticamente aqui.
+              Na aba do GitHub aberta no navegador, informe este código e
+              autorize o Docs Local. Depois, volte a esta aba: a conexão será
+              concluída automaticamente.
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center justify-center gap-3">
