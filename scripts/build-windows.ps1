@@ -20,6 +20,7 @@ try {
     }
     & $Python -m PyInstaller --noconfirm --clean --onefile --windowed `
         --name DocsLocal `
+        --icon 'app/static/docs-local.ico' `
         --add-data 'app/static;app/static' `
         --collect-submodules uvicorn `
         --collect-submodules fastapi `
