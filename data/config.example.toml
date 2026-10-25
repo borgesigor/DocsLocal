@@ -1,0 +1,25 @@
+[server]
+host = "127.0.0.1"
+port = 8765
+open_browser_on_start = false
+
+[storage]
+repository_path = "./data/repository"
+
+[git]
+enabled = true
+remote = "origin"
+branch = "main"
+sync_debounce_seconds = 10
+retry_enabled = true
+periodic_check_seconds = 60
+
+[editor]
+autosave_enabled = true
+autosave_debounce_ms = 1000
+
+[search]
+enabled = true
+
+[logging]
+level = "INFO"

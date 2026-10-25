@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111813">
+    <title>Docs Local</title>
+    <link rel="stylesheet" href="/static/css/app.css?v=dark-theme-2">
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="Docs Local, início">
+            <span class="brand-mark">d.</span>
+            <span>docs local</span>
+        </a>
+        <div class="crumbs" id="crumbs">Seus projetos</div>
+        <div class="top-actions">
+            <span class="sync-pill" id="sync-pill"><i></i><span>Local</span></span>
+            <button class="icon-button" id="sync-now" title="Sincronizar agora" aria-label="Sincronizar agora">↻</button>
+            <button class="icon-button" id="history" title="Histórico" aria-label="Histórico" hidden>◷</button>
+        </div>
+    </header>
+
+    <main id="home" class="home-view">
+        <section class="project-area">
+            <div class="section-head">
+                <h1 id="projects-title">Projetos</h1>
+                <span id="project-total">0 projetos</span>
+                <button class="button button-dark" id="new-project">
+                    <span>＋</span> Novo projeto
+                </button>
+            </div>
+            <div id="project-grid" class="project-grid"></div>
+        </section>
+
+        <footer class="home-foot">
+            <span><i class="online-dot"></i> Tudo salvo neste computador</span>
+            <span>Docs Local <b>·</b> Markdown simples, arquivos seus</span>
+        </footer>
+    </main>
+
+    <main id="workspace" class="workspace" hidden>
+        <aside class="sidebar">
+            <div class="project-summary">
+                <button id="back-home" class="back-link">← Projetos</button>
+                <h2 id="project-name"></h2>
+                <p id="project-description"></p>
+            </div>
+
+            <div class="side-tools">
+                <span>Documentos</span>
+                <div>
+                    <button id="new-folder" class="mini-button" title="Nova pasta">▱</button>
+                    <button id="new-document" class="mini-button" title="Novo documento">＋</button>
+                </div>
+            </div>
+
+            <label class="search-box">
+                <span>⌕</span>
+                <input id="project-search" placeholder="Buscar neste projeto" autocomplete="off">
+                <kbd>⌘ K</kbd>
+            </label>
+            <nav id="tree" class="tree" aria-label="Árvore de documentos"></nav>
+
+            <div class="sidebar-bottom">
+                <span class="online-dot"></span>
+                <span>Arquivos locais</span>
+                <button id="project-settings" title="Configurações do projeto">•••</button>
+            </div>
+        </aside>
+
+        <section class="document-area">
+            <div class="doc-toolbar">
+                <div class="doc-location">
+                    <span id="doc-title">Selecione um documento</span>
+                    <span id="doc-path"></span>
+                </div>
+                <div class="doc-actions">
+                    <span class="save-state" id="save-state">Pronto</span>
+                    <div class="mode-switch">
+                        <button data-mode="edit">Editar</button>
+                        <button data-mode="split" class="selected">Dividir</button>
+                        <button data-mode="preview">Ler</button>
+                    </div>
+                    <div id="doc-menu" hidden>
+                        <button class="mini-button" id="rename-document" title="Renomear ou mover">↗</button>
+                        <button class="mini-button" id="delete-document" title="Excluir documento">⌫</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="editor-layout" id="editor-layout">
+                <div class="editor-pane">
+                    <div class="pane-label"><span>Markdown</span><span>⌘ S</span></div>
+                    <textarea id="editor" spellcheck="false" aria-label="Editor Markdown" placeholder="Escolha um documento ou crie um novo." disabled></textarea>
+                </div>
+                <div class="preview-pane">
+                    <div class="pane-label"><span>Pré-visualização</span><span>ao vivo</span></div>
+                    <article id="preview" class="prose">
+                        <div class="empty-note">A visualização do documento aparece aqui.</div>
+                    </article>
+                </div>
+            </div>
+            <div id="project-results" class="results-view" hidden></div>
+        </section>
+    </main>
+
+    <dialog id="modal">
+        <form method="dialog" id="modal-form">
+            <button class="modal-close" value="cancel" aria-label="Fechar">×</button>
+            <div id="modal-content"></div>
+            <div class="modal-actions">
+                <button class="button button-light" value="cancel">Cancelar</button>
+                <button class="button button-dark" id="modal-submit" value="default">Continuar</button>
+            </div>
+        </form>
+    </dialog>
+    <div id="toast" class="toast" role="status"></div>
+    <script src="/static/js/app.js" defer></script>
+</body>
+</html>

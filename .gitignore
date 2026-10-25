@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+/data/*
+!/data/config.example.toml
+.env
+.env.*
+*.log
+tests/tmp*/
+build/
+dist/
+*.spec
