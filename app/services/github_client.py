@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 API_ROOT = 'https://api.github.com'
-OAUTH_ROOT = 'https://github.com/login/oauth'
+LOGIN_ROOT = 'https://github.com/login'
 API_VERSION = '2026-03-10'
 REQUEST_TIMEOUT_SECONDS = 20
 
@@ -81,8 +81,9 @@ def github_api(
 
 
 def oauth_request(path: str, values: dict[str, str]) -> dict:
+    endpoint = 'device/code' if path == 'device/code' else f'oauth/{path}'
     request = Request(
-        f'{OAUTH_ROOT}/{path}',
+        f'{LOGIN_ROOT}/{endpoint}',
         data=urlencode(values).encode('ascii'),
         headers={
             'Accept': 'application/json',

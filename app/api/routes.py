@@ -1,9 +1,10 @@
+import asyncio
 import re
 import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, File, Header, Request, Response, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import CONFIG, DATA, PROJECTS, REPO
@@ -15,6 +16,8 @@ from app.services import search_service as search
 from app.services.integrity_service import check_integrity
 from app.services.github_client import GitHubAPIError
 from app.services.github_service import sync_manager
+from app.services.update_service import update_manager
+from app.services.updater import UpdateError
 from app.services.storage import atomic_write
 from app.services.toml_writer import dumps as write_toml
 
@@ -30,7 +33,7 @@ ALLOWED_CONFIG_OPTIONS = {
         'retry_enabled',
         'periodic_check_seconds',
     },
-    'github': {'enabled', 'client_id', 'repository_name'},
+    'github': {'enabled', 'repository_name'},
     'editor': {'autosave_enabled', 'autosave_debounce_ms'},
     'search': {'enabled'},
     'logging': {'level'},
@@ -79,9 +82,13 @@ class FolderMove(BaseModel):
     new_path: str
 
 
-class GitHubOAuthConfig(BaseModel):
-    client_id: str = Field(min_length=1, max_length=200)
-    client_secret: str = Field(min_length=1, max_length=500)
+class GitHubDeviceAttempt(BaseModel):
+    attempt_id: str = Field(min_length=1, max_length=200, pattern=r'^[A-Za-z0-9_-]+$')
+
+
+class UpdateHold(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9_-]+$')
+    dirty: bool
 
 
 @api.get('/projects')
@@ -366,34 +373,29 @@ async def github_auth_status():
     return await sync_manager.authentication_status()
 
 
-@api.put('/github/auth/config')
-def configure_github_oauth(data: GitHubOAuthConfig):
-    return sync_manager.configure_oauth(data.client_id, data.client_secret)
-
-
-@api.get('/github/auth/start')
-def start_github_authorization():
-    return {'authorization_url': sync_manager.start_authorization()}
-
-
-@api.get('/github/auth/callback')
-async def github_authorization_callback(
-    code: str | None = None,
-    state: str | None = None,
-    error: str | None = None,
-):
+@api.post('/github/auth/start')
+async def start_github_authorization():
     try:
-        await sync_manager.authentication_callback(
-            code=code,
-            state=state,
-            error=error,
-        )
-    except AppError as auth_error:
-        reason = auth_error.code or 'authorization_failed'
-        return RedirectResponse(f'/?github=error&reason={reason}', status_code=303)
+        return await asyncio.to_thread(sync_manager.start_device_authorization)
     except GitHubAPIError:
-        return RedirectResponse('/?github=error&reason=github_api_error', status_code=303)
-    return RedirectResponse('/?github=connected', status_code=303)
+        raise AppError(502, 'github_login_unavailable', 'Não foi possível conectar ao GitHub. Tente novamente.')
+
+
+@api.post('/github/auth/poll')
+async def poll_github_authorization(data: GitHubDeviceAttempt):
+    try:
+        result = await asyncio.to_thread(sync_manager.poll_device_authorization, data.attempt_id)
+    except GitHubAPIError:
+        raise AppError(502, 'github_login_unavailable', 'Não foi possível conectar ao GitHub. Tente novamente.')
+    if result['status'] == 'authenticated' and sync_manager.status['state'] == 'idle':
+        await sync_manager.trigger(0)
+    return result
+
+
+@api.post('/github/auth/cancel')
+def cancel_github_authorization(data: GitHubDeviceAttempt):
+    sync_manager.cancel_device_authorization(data.attempt_id)
+    return {'status': 'cancelled'}
 
 
 @api.delete('/github/auth')
@@ -405,6 +407,35 @@ def logout_github():
 @api.get('/sync/status')
 async def sync_status():
     return await sync_manager.status_details()
+
+
+@api.get('/updates/status')
+def update_status():
+    return update_manager.status()
+
+
+@api.post('/updates/check')
+async def check_updates():
+    return await asyncio.to_thread(update_manager.check, manual=True)
+
+
+@api.post('/updates/defer')
+def defer_update():
+    return update_manager.defer()
+
+
+@api.post('/updates/hold')
+def hold_update(data: UpdateHold):
+    update_manager.hold(data.client_id, data.dirty)
+    return {'held': data.dirty}
+
+
+@api.post('/updates/install', status_code=202)
+def install_update():
+    try:
+        return update_manager.start_install()
+    except UpdateError as error:
+        raise AppError(409, 'update_unavailable', str(error))
 
 
 @api.post('/sync/trigger', status_code=202)
@@ -512,10 +543,7 @@ def validate_config(config):
     ):
         raise AppError(422, 'invalid_config', 'Nome de branch Git inválido.')
 
-    github_client_id = config['github']['client_id']
     repository_name = config['github']['repository_name']
-    if not isinstance(github_client_id, str) or len(github_client_id) > 200:
-        raise AppError(422, 'invalid_config', 'Client ID do GitHub inválido.')
     if (
         not isinstance(repository_name, str)
         or not re.fullmatch(r'[A-Za-z0-9._-]{1,100}', repository_name)

@@ -25,7 +25,7 @@ class FrozenUserIsolationTests(unittest.TestCase):
                     spec.loader.exec_module(module)
                 self.assertEqual(module.DATA, local_appdata / 'DocsLocal')
                 self.assertEqual(module.REPO, (module.DATA / 'repository').resolve())
-                self.assertEqual(module.CONFIG['github']['client_id'], '')
+                self.assertNotIn('client_id', module.CONFIG['github'])
                 self.assertFalse((module.STATE / 'github-secrets.bin').exists())
                 self.assertFalse(module.PROJECTS.exists())
                 configs.append(module)

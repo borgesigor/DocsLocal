@@ -147,7 +147,7 @@ def apply_update_after_exit(process_id: int, target_executable: Path) -> int:
             try:
                 replacement.write_bytes(source.read_bytes())
                 os.replace(replacement, target)
-                subprocess.Popen([str(target)], close_fds=True, cwd=str(target.parent))
+                subprocess.Popen([str(target), '--updated'], close_fds=True, cwd=str(target.parent))
                 return 0
             except OSError:
                 replacement.unlink(missing_ok=True)

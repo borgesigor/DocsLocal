@@ -37,7 +37,7 @@ class UpdaterTests(unittest.TestCase):
                 self.assertEqual(updater.check_latest() is not None, offered)
 
     def test_release_without_binary_and_checksum_is_rejected(self):
-        with patch.object(updater, '_request', return_value=io.BytesIO(json.dumps(release(assets=[])).encode())):
+        with patch.object(updater, 'VERSION', '1.0.0'), patch.object(updater, '_request', return_value=io.BytesIO(json.dumps(release(assets=[])).encode())):
             with self.assertRaises(updater.UpdateError):
                 updater.check_latest()
 

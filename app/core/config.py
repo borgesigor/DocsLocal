@@ -28,7 +28,6 @@ DEFAULTS = {
     },
     'github': {
         'enabled': True,
-        'client_id': '',
         'repository_name': 'docs-local-backup',
     },
     'editor': {'autosave_enabled': True, 'autosave_debounce_ms': 1000},
@@ -55,7 +54,6 @@ periodic_check_seconds = 60
 
 [github]
 enabled = true
-client_id = ""
 repository_name = "docs-local-backup"
 
 [editor]
@@ -80,6 +78,8 @@ def load_config():
         section: {**defaults, **incoming.get(section, {})}
         for section, defaults in DEFAULTS.items()
     }
+    # Older installations may still have a per-user OAuth App ID.
+    cfg['github'].pop('client_id', None)
     repo = Path(cfg['storage']['repository_path'])
     if not repo.is_absolute():
         if FROZEN:

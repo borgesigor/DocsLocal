@@ -6,6 +6,10 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+    --color-github: #24292f;
+    --color-github-hover: #32383f;
+    --color-github-foreground: #ffffff;
+    --color-github-border: #57606a;
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);

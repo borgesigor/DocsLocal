@@ -18,6 +18,7 @@ import uvicorn
 from app.core.config import CONFIG, STATE
 from app.main import app
 from app.services import updater
+from app.services.update_service import update_manager
 from app.version import VERSION
 
 LOGGER = logging.getLogger(__name__)
@@ -55,10 +56,8 @@ MENU_CHECK_UPDATES = 1005
 UPDATE_SHUTDOWN_MESSAGE = WM_USER + 2
 UPDATE_CHECK_INTERVAL_SECONDS = 6 * 60 * 60
 UPDATE_STARTUP_DELAY_SECONDS = 60
-MB_YESNO = 0x00000004
 MB_ICONINFORMATION = 0x00000040
 MB_TOPMOST = 0x00040000
-IDYES = 6
 
 LRESULT = ctypes.c_ssize_t
 WNDPROC = ctypes.WINFUNCTYPE(
@@ -163,6 +162,8 @@ class DocsLocalTray:
         self._notify_data = NotifyIconData()
         self._window_procedure = WNDPROC(self._handle_window_message)
         self._class_name = f'DocsLocalTrayWindow_{os.getpid()}'
+        update_manager.shutdown = lambda: self._user32.PostMessageW(self._window_handle, UPDATE_SHUTDOWN_MESSAGE, 0, 0)
+        update_manager.notify_available = lambda: webbrowser.open(self.server_url)
 
     def _configure_windows_api(self) -> None:
         self._kernel32.CreateMutexW.argtypes = [
@@ -270,6 +271,8 @@ class DocsLocalTray:
             self._start_server()
             self._create_hidden_window()
             self._add_notification_icon()
+            if '--updated' in sys.argv:
+                webbrowser.open(self.server_url)
             self._user32.SetTimer(self._window_handle, TIMER_ID, 5000, None)
             self._run_message_loop()
         finally:
@@ -571,34 +574,15 @@ class DocsLocalTray:
 
     def _check_for_update(self, manual: bool) -> None:
         try:
-            release = updater.check_latest()
-            if release is None:
-                if manual:
-                    self._user32.MessageBoxW(
-                        self._window_handle,
-                        f'O Docs Local {VERSION} já está atualizado.',
-                        'Docs Local',
-                        MB_ICONINFORMATION | MB_TOPMOST,
-                    )
-                return
-            answer = self._user32.MessageBoxW(
-                self._window_handle,
-                f'A versão {release["version"]} está disponível. Deseja baixar e instalar agora?',
-                'Atualização do Docs Local',
-                MB_YESNO | MB_ICONINFORMATION | MB_TOPMOST,
-            )
-            if answer != IDYES:
-                return
-            staged = updater.download_update(release)
-            updater.launch_update_helper(staged, Path(sys.executable), os.getpid())
-            self._user32.PostMessageW(self._window_handle, UPDATE_SHUTDOWN_MESSAGE, 0, 0)
-        except Exception as error:
-            LOGGER.warning('Falha ao verificar ou instalar atualização: %s', error)
-            if manual:
+            previous = update_manager.status()['available_version']
+            status = update_manager.check(manual=manual)
+            if status['available_version']:
+                if manual and previous == status['available_version']:
+                    webbrowser.open(self.server_url)
+            elif manual:
+                message = status['error'] or f'O Docs Local {VERSION} já está atualizado.'
                 self._user32.MessageBoxW(
-                    self._window_handle,
-                    f'Não foi possível atualizar o Docs Local.\n\n{error}',
-                    'Atualização do Docs Local',
+                    self._window_handle, message, 'Atualização do Docs Local',
                     MB_ICONINFORMATION | MB_TOPMOST,
                 )
         finally:

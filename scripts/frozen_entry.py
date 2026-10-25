@@ -9,14 +9,17 @@ if len(sys.argv) == 3 and sys.argv[1] == '--check-installation':
     from app.main import app, BUILT_FILES
     from app.services.project_service import list_projects
     from app.services.secret_store import secret_store
+    from app.services.github_service import GITHUB_CLIENT_ID
+    from app.services.onboarding_service import ensure_welcome_documentation
     from app.version import VERSION
 
+    ensure_welcome_documentation(STATE)
     report = {
         'version': VERSION,
         'data_path': str(DATA),
         'repository_path': str(REPO),
         'project_count': len(list_projects()),
-        'oauth_client_id': CONFIG['github']['client_id'],
+        'oauth_client_id': GITHUB_CLIENT_ID,
         'credential_count': len(secret_store.read_all()),
         'frontend_present': (BUILT_FILES / 'index.html').is_file(),
         'route_count': len(app.openapi()['paths']),

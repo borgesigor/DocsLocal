@@ -18,7 +18,9 @@ from app.core.security import document_path
 from app.services import document_service, project_service
 from app.services.github_service import sync_manager
 from app.services.instance_lock import InstanceLock
+from app.services.onboarding_service import ensure_welcome_documentation
 from app.services.storage import atomic_write
+from app.services.update_service import update_manager
 from app.version import VERSION
 
 instance_lock = InstanceLock()
@@ -27,11 +29,14 @@ instance_lock = InstanceLock()
 async def run_periodic_sync():
     while True:
         interval = max(10, int(CONFIG['git']['periodic_check_seconds']))
+        if sync_manager.status.get('retry_count'):
+            interval = max(interval, min(300, 10 * 2 ** min(sync_manager.status['retry_count'], 5)))
         await asyncio.sleep(interval)
         if (
             CONFIG['github']['enabled']
             and sync_manager.is_authenticated()
         ):
+            # This scans local hashes only. A clean queue never contacts GitHub.
             await sync_manager.trigger(0)
 
 
@@ -39,6 +44,7 @@ async def run_periodic_sync():
 async def lifespan(app: FastAPI):
     instance_lock.acquire()
     periodic_task = None
+    update_task = None
     try:
         REPO.mkdir(parents=True, exist_ok=True)
         PROJECTS.mkdir(parents=True, exist_ok=True)
@@ -47,14 +53,19 @@ async def lifespan(app: FastAPI):
         if not gitignore.exists():
             atomic_write(gitignore, '.DS_Store\nThumbs.db\n')
 
+        ensure_welcome_documentation(STATE)
+        sync_manager.resume()
+        update_manager.prepare_shutdown = sync_manager.prepare_shutdown
+        update_manager.resume = sync_manager.resume
         sync_manager.start()
         if CONFIG['github']['enabled'] and sync_manager.is_authenticated():
             await sync_manager.trigger(0)
 
         periodic_task = asyncio.create_task(run_periodic_sync())
+        update_task = asyncio.create_task(update_manager.watch())
         yield
     finally:
-        tasks = [task for task in (periodic_task, sync_manager.worker) if task]
+        tasks = [task for task in (periodic_task, update_task, sync_manager.worker) if task]
         for task in tasks:
             task.cancel()
         if tasks:

@@ -8,12 +8,10 @@ import {
   ChevronRight,
   CloudOff,
   CloudUpload,
-  Copy,
   FilePlus2,
   FileText,
   Folder,
   FolderPlus,
-  GitBranch,
   ExternalLink,
   LoaderCircle,
   LogOut,
@@ -22,7 +20,6 @@ import {
   RefreshCw,
   Search,
   Save,
-  Settings,
   Trash2,
   X,
   type LucideIcon,
@@ -30,6 +27,9 @@ import {
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { GitHubLogin } from "@/components/github-login"
+import { UpdateDialog } from "@/components/update-dialog"
+import { request } from "@/lib/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Collapsible,
@@ -137,6 +137,9 @@ type SyncStatus = {
   authenticated?: boolean
   pending?: boolean
   has_local_changes?: boolean
+  pending_count?: number
+  workspace_version?: string
+  conflicts?: string[]
 }
 
 type GitHubUser = {
@@ -156,8 +159,6 @@ type GitHubRepository = {
 type GitHubAuthStatus = {
   configured: boolean
   authenticated: boolean
-  client_id?: string
-  callback_url: string
   user: GitHubUser | null
   repository: GitHubRepository | null
   repository_error: string | null
@@ -169,8 +170,6 @@ type TreeActionTarget = {
   id?: string
   name: string
 }
-
-const API = "/api/v1"
 
 type WorkspaceHistoryMode = "push" | "replace" | "none"
 
@@ -194,29 +193,11 @@ function writeWorkspaceRoute(
   }
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const headers = new Headers(options?.headers)
-  if (options?.body && !(options.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json")
-  }
-
-  const response = await fetch(`${API}${path}`, { ...options, headers })
-  const result = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(result?.error?.message ?? `Erro ${response.status}`)
-  }
-  return result as T
-}
-
 function App() {
   const isMobile = useIsMobile()
   const [githubAuth, setGithubAuth] = React.useState<GitHubAuthStatus | null>(
     null
   )
-  const [githubSetupOpen, setGithubSetupOpen] = React.useState(false)
-  const [githubClientId, setGithubClientId] = React.useState("")
-  const [githubClientSecret, setGithubClientSecret] = React.useState("")
-  const [githubSetupSaving, setGithubSetupSaving] = React.useState(false)
   const [projects, setProjects] = React.useState<Project[]>([])
   const [project, setProject] = React.useState<Project | null>(null)
   const [tree, setTree] = React.useState<TreeNode[]>([])
@@ -250,6 +231,7 @@ function App() {
   const [documentName, setDocumentName] = React.useState("")
   const [searchQuery, setSearchQuery] = React.useState("")
   const workspaceNavigation = React.useRef(0)
+  const appliedWorkspaceVersion = React.useRef<string | null>(null)
   React.useEffect(() => {
     if (!document || editing || !window.location.hash) return
     let anchor: string
@@ -266,8 +248,7 @@ function App() {
   const syncInProgress =
     syncRequesting ||
     syncStatus.state === "queued" ||
-    syncStatus.state === "syncing" ||
-    syncStatus.pending === true
+    syncStatus.state === "syncing"
 
   async function selectProject(
     selected: Project,
@@ -392,27 +373,45 @@ function App() {
     }
   }
 
+  const refreshRestoredWorkspace = React.useEffectEvent(async (version: string, isActive: () => boolean) => {
+    try {
+      const [items, account] = await Promise.all([
+        request<Project[]>("/projects"),
+        request<GitHubAuthStatus>("/github/auth/status"),
+      ])
+      if (!isActive()) return
+      appliedWorkspaceVersion.current = version
+      setProjects(items)
+      setGithubAuth(account)
+      const selected = items.find((item) => item.id === project?.id) ?? items[0]
+      if (selected) {
+        await selectProject(selected, {
+          documentId: selected.id === project?.id ? document?.id : undefined,
+          historyMode: "replace",
+        })
+      } else {
+        setProject(null)
+        setDocument(null)
+        setTree([])
+      }
+      if (syncStatus.conflicts?.length) {
+        toast.info(`Backup restaurado. ${syncStatus.conflicts.length} edição(ões) local(is) preservada(s) em arquivos de conflito.`)
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível carregar os arquivos restaurados.")
+    }
+  })
+
+  React.useEffect(() => {
+    const version = syncStatus.workspace_version
+    if (!version || appliedWorkspaceVersion.current === version || editing || saving) return
+    let active = true
+    void refreshRestoredWorkspace(version, () => active)
+    return () => { active = false }
+  }, [syncStatus.workspace_version, editing, saving])
+
   React.useEffect(() => {
     let active = true
-    const callbackQuery = new URLSearchParams(window.location.search)
-    const githubResult = callbackQuery.get("github")
-
-    if (githubResult) {
-      callbackQuery.delete("github")
-      const callbackUrl = new URL(window.location.href)
-      callbackUrl.searchParams.delete("github")
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`
-      )
-      if (githubResult === "connected") {
-        toast.success("Conta GitHub conectada")
-      } else {
-        toast.error("Não foi possível concluir a autorização do GitHub.")
-      }
-    }
-
     async function initializeWorkspace() {
       try {
         const items = await request<Project[]>("/projects")
@@ -466,7 +465,6 @@ function App() {
       .then((status) => {
         if (!active) return
         setGithubAuth(status)
-        setGithubClientId(status.client_id ?? "")
         if (status.repository_error) toast.error(status.repository_error)
       })
       .catch((error) => {
@@ -535,7 +533,7 @@ function App() {
   async function saveDocument() {
     if (!project || !document || draft === document.content) {
       setEditing(false)
-      return
+      return true
     }
     setSaving(true)
     try {
@@ -552,10 +550,12 @@ function App() {
       await refreshWorkspace(project.id)
       await refreshSyncStatus()
       toast.success("Documento salvo")
+      return true
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Não foi possível salvar"
       )
+      return false
     } finally {
       setSaving(false)
     }
@@ -882,68 +882,11 @@ function App() {
     }
   }
 
-  async function startGitHubLogin() {
-    if (!githubAuth?.configured) {
-      toast.error(
-        "Configure o OAuth App uma vez pelo botão de configurações do GitHub."
-      )
-      return
-    }
-
-    try {
-      const result = await request<{ authorization_url: string }>(
-        "/github/auth/start"
-      )
-      window.location.assign(result.authorization_url)
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível iniciar o login"
-      )
-    }
-  }
-
-  async function configureAndLoginWithGitHub(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault()
-    setGithubSetupSaving(true)
-
-    try {
-      const result = await request<{ configured: boolean }>(
-        "/github/auth/config",
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            client_id: githubClientId,
-            client_secret: githubClientSecret,
-          }),
-        }
-      )
-      setGithubAuth((current) => ({
-        configured: result.configured,
-        authenticated: false,
-        client_id: githubClientId,
-        callback_url:
-          current?.callback_url ??
-          `${window.location.origin}/api/v1/github/auth/callback`,
-        user: null,
-        repository: null,
-        repository_error: null,
-      }))
-      setGithubClientSecret("")
-      setGithubSetupOpen(false)
-      toast.success("OAuth configurado. Entre pelo botão Logar com GitHub.")
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível salvar a configuração OAuth"
-      )
-    } finally {
-      setGithubSetupSaving(false)
-    }
+  async function refreshGitHubAccount() {
+    const status = await request<GitHubAuthStatus>("/github/auth/status")
+    setGithubAuth(status)
+    if (status.repository_error) toast.error(status.repository_error)
+    await refreshSyncStatus()
   }
 
   async function logoutFromGitHub() {
@@ -969,9 +912,6 @@ function App() {
     () => filterTree(tree, searchQuery.trim().toLocaleLowerCase("pt-BR")),
     [tree, searchQuery]
   )
-  const githubCallbackUrl =
-    githubAuth?.callback_url ??
-    `${window.location.origin}/api/v1/github/auth/callback`
 
   return (
     <SidebarProvider
@@ -1197,9 +1137,6 @@ function App() {
                         ? "Sincronizando..."
                         : "Sincronizar agora"}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setGithubSetupOpen(true)}>
-                      <Settings /> Configurar OAuth App
-                    </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -1211,24 +1148,7 @@ function App() {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void startGitHubLogin()}
-                >
-                  <GitBranch /> Logar com GitHub
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Configurar OAuth do GitHub"
-                  title="Configurar OAuth do GitHub"
-                  onClick={() => setGithubSetupOpen(true)}
-                >
-                  <Settings />
-                </Button>
-              </>
+              <GitHubLogin onConnected={refreshGitHubAccount} />
             )}
             <Dialog
               open={documentDialogOpen}
@@ -1596,92 +1516,10 @@ function App() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog
-        open={githubSetupOpen}
-        onOpenChange={(open) => {
-          setGithubSetupOpen(open)
-          if (!open) setGithubClientSecret("")
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Configurar o OAuth do GitHub</DialogTitle>
-            <DialogDescription>
-              Esta configuração é feita uma vez para o aplicativo. Depois, Logar
-              com GitHub abre a página oficial de autorização e retorna
-              automaticamente ao Docs Local.
-            </DialogDescription>
-          </DialogHeader>
-          <form className="grid gap-4" onSubmit={configureAndLoginWithGitHub}>
-            <div className="grid gap-2">
-              <p className="text-sm font-medium">1. Registre o OAuth App</p>
-              <a
-                className="text-sm text-primary underline underline-offset-4"
-                href="https://github.com/settings/applications/new"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Abrir configurações de OAuth Apps no GitHub
-              </a>
-              <p className="text-xs text-muted-foreground">
-                Use este callback exato e solicite os escopos <code>repo</code>{" "}
-                e <code>read:user</code>.
-              </p>
-              <div className="flex gap-2">
-                <Input readOnly value={githubCallbackUrl} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Copiar URL de callback"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(githubCallbackUrl)
-                    toast.success("Callback copiado")
-                  }}
-                >
-                  <Copy />
-                </Button>
-              </div>
-            </div>
-            <div className="grid gap-3">
-              <p className="text-sm font-medium">2. Confira os dados do app</p>
-              <Input
-                required
-                autoComplete="off"
-                aria-label="Client ID do OAuth App"
-                value={githubClientId}
-                readOnly={Boolean(githubClientId)}
-                onChange={(event) => setGithubClientId(event.target.value)}
-                placeholder="Client ID do OAuth App"
-              />
-              <Input
-                required
-                type="password"
-                autoComplete="new-password"
-                placeholder="Client Secret"
-                value={githubClientSecret}
-                onChange={(event) => setGithubClientSecret(event.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                O Client Secret é necessário para a troca OAuth, fica
-                criptografado no Windows e não será solicitado a cada login. O
-                app criará ou verificará automaticamente um repositório privado.
-              </p>
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={githubSetupSaving}>
-                {githubSetupSaving ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <Save />
-                )}
-                Salvar configuração
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
+      <UpdateDialog
+        beforeInstall={async () => !saving && await saveDocument()}
+        hasUnsavedChanges={saving || (editing && draft !== document?.content)}
+      />
       <Toaster richColors position="bottom-right" />
     </SidebarProvider>
   )
@@ -2002,7 +1840,7 @@ function syncPresentation(status: SyncStatus): SyncPresentation {
 
   if (status.state === "syncing") {
     return {
-      label: "Enviando para o GitHub",
+      label: "Sincronizando com o GitHub",
       variant: "secondary",
       icon: LoaderCircle,
       spinning: true,
@@ -2054,7 +1892,7 @@ function SyncStatusIndicator({ status }: { status: SyncStatus }) {
       className="w-full justify-start"
       title={
         status.last_error ??
-        (lastSync ? `Último envio: ${lastSync}` : undefined)
+        (lastSync ? `Última sincronização: ${lastSync}` : undefined)
       }
       variant={presentation.variant}
     >

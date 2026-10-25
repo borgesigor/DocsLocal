@@ -88,7 +88,7 @@ def get_folder(project_id: str, include_archived: bool = False):
 
 
 @repository_operation
-def create_project(name: str, description: str = ''):
+def create_project(name: str, description: str = '', *, initial_content: str | None = None):
     slug_base = safe_slug(name)
     validate_path_components((slug_base,))
     PROJECTS.mkdir(parents=True, exist_ok=True)
@@ -104,13 +104,15 @@ def create_project(name: str, description: str = ''):
         raise AppError(409, 'project_name_exhausted', 'Escolha outro nome para o projeto.')
 
     try:
-        return initialize_project(folder, slug, name, description)
+        return initialize_project(folder, slug, name, description, initial_content=initial_content)
     except Exception:
         shutil.rmtree(folder)
         raise
 
 
-def initialize_project(folder: Path, slug: str, name: str, description: str):
+def initialize_project(
+    folder: Path, slug: str, name: str, description: str, *, initial_content: str | None = None
+):
     (folder / 'docs').mkdir()
     (folder / 'assets').mkdir()
 
@@ -127,10 +129,8 @@ def initialize_project(folder: Path, slug: str, name: str, description: str):
     atomic_write(folder / 'project.toml', dumps_values(project))
 
     document_id = uuid.uuid4()
-    index_content = (
-        f'<!-- docs-local: id={document_id} revision=1 updated={created_at} -->\n'
-        f'# {name.strip()}\n\n{description.strip()}\n'
-    )
+    content = initial_content if initial_content is not None else f'# {name.strip()}\n\n{description.strip()}\n'
+    index_content = f'<!-- docs-local: id={document_id} revision=1 updated={created_at} -->\n{content}'
     atomic_write(folder / 'index.md', index_content)
     atomic_write(folder / 'docs' / '.gitkeep', '')
     atomic_write(folder / 'assets' / '.gitkeep', '')

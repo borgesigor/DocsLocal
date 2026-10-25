@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app import main
 from app.api import routes
 from app.core import config
-from app.services import git_service, instance_lock, project_service
+from app.services import git_service, instance_lock, project_service, github_service
 
 
 class ApiTests(unittest.TestCase):
@@ -29,9 +29,12 @@ class ApiTests(unittest.TestCase):
             patch.object(routes, 'PROJECTS', self.projects_folder),
             patch.object(project_service, 'PROJECTS', self.projects_folder),
             patch.object(git_service, 'REPO', self.repository),
+            patch.object(github_service, 'REPO', self.repository),
+            patch.object(routes.sync_manager, 'state_folder', self.state_folder),
             patch.object(git_service, 'STATE', self.state_folder),
             patch.object(git_service, 'STATUS_FILE', self.state_folder / 'sync.json'),
             patch.object(instance_lock, 'STATE', self.state_folder),
+            patch.object(main, 'ensure_welcome_documentation'),
             patch.dict(config.CONFIG['git'], {'enabled': False}),
             patch.dict(config.CONFIG['github'], {'enabled': False}),
         ]
@@ -98,66 +101,64 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.get('/docs').status_code, 200)
         self.assertEqual(self.client.get('/openapi.json').status_code, 200)
 
-    def test_github_oauth_routes_delegate_to_sync_service(self):
+    def test_github_device_routes_delegate_to_sync_service(self):
         with (
-            patch.object(
-                routes.sync_manager,
-                'authentication_status',
-                new=AsyncMock(
-                    return_value={
-                        'configured': False,
-                        'authenticated': False,
-                        'callback_url': 'http://127.0.0.1:8765/api/v1/github/auth/callback',
-                        'user': None,
-                        'repository': None,
-                        'repository_error': None,
-                    }
-                ),
-            ),
-            patch.object(
-                routes.sync_manager,
-                'configure_oauth',
-                return_value={'configured': True},
-            ) as configure_oauth,
-            patch.object(
-                routes.sync_manager,
-                'start_authorization',
-                return_value='https://github.com/login/oauth/authorize?state=test',
-            ),
-            patch.object(
-                routes.sync_manager,
-                'authentication_callback',
-                new=AsyncMock(),
-            ) as authentication_callback,
+            patch.object(routes.sync_manager, 'authentication_status', new=AsyncMock(
+                return_value={'configured': True, 'authenticated': False},
+            )),
+            patch.object(routes.sync_manager, 'start_device_authorization', return_value={
+                'attempt_id': 'attempt', 'user_code': 'ABCD-EFGH',
+                'verification_uri': 'https://github.com/login/device', 'interval': 5, 'expires_in': 900,
+            }) as start,
+            patch.object(routes.sync_manager, 'poll_device_authorization', return_value={
+                'status': 'authenticated',
+            }) as poll,
+            patch.object(routes.sync_manager, 'cancel_device_authorization') as cancel,
+            patch.object(routes.sync_manager, 'trigger', new=AsyncMock()) as trigger,
+            patch.dict(routes.sync_manager.status, {'state': 'idle'}),
             patch.object(routes.sync_manager, 'logout') as logout,
         ):
             status = self.client.get('/api/v1/github/auth/status')
-            configured = self.client.put(
-                '/api/v1/github/auth/config',
-                json={'client_id': 'client-id', 'client_secret': 'client-secret'},
-            )
-            authorization = self.client.get('/api/v1/github/auth/start')
-            callback = self.client.get(
-                '/api/v1/github/auth/callback',
-                params={'code': 'oauth-code', 'state': 'oauth-state'},
-                follow_redirects=False,
-            )
+            authorization = self.client.post('/api/v1/github/auth/start')
+            connected = self.client.post('/api/v1/github/auth/poll', json={'attempt_id': 'attempt'})
+            cancelled = self.client.post('/api/v1/github/auth/cancel', json={'attempt_id': 'attempt'})
             signed_out = self.client.delete('/api/v1/github/auth')
 
         self.assertEqual(status.status_code, 200)
-        self.assertFalse(status.json()['authenticated'])
-        self.assertEqual(configured.status_code, 200)
-        configure_oauth.assert_called_once_with('client-id', 'client-secret')
-        self.assertEqual(authorization.json()['authorization_url'].split('?')[0], 'https://github.com/login/oauth/authorize')
-        self.assertEqual(callback.status_code, 303)
-        self.assertEqual(callback.headers['location'], '/?github=connected')
-        authentication_callback.assert_awaited_once_with(
-            code='oauth-code',
-            state='oauth-state',
-            error=None,
-        )
+        self.assertTrue(status.json()['configured'])
+        self.assertEqual(authorization.json()['user_code'], 'ABCD-EFGH')
+        self.assertEqual(connected.json(), {'status': 'authenticated'})
+        self.assertEqual(cancelled.json(), {'status': 'cancelled'})
+        start.assert_called_once_with()
+        poll.assert_called_once_with('attempt')
+        cancel.assert_called_once_with('attempt')
+        trigger.assert_awaited_once_with(0)
         self.assertEqual(signed_out.json(), {'authenticated': False})
         logout.assert_called_once_with()
+
+    def test_device_login_requires_post_and_attempt_identifier(self):
+        self.assertEqual(self.client.get('/api/v1/github/auth/start').status_code, 405)
+        self.assertEqual(self.client.post('/api/v1/github/auth/poll', json={}).status_code, 422)
+        self.assertEqual(self.client.post('/api/v1/github/auth/cancel', json={}).status_code, 422)
+        self.assertEqual(self.client.put('/api/v1/github/auth/config', json={}).status_code, 404)
+
+    def test_update_status_and_defer_do_not_trigger_release_checks(self):
+        with (
+            patch.object(routes.update_manager, 'check') as check,
+            patch.object(routes.update_manager, 'deferred_until', 0),
+        ):
+            self.assertEqual(self.client.get('/api/v1/updates/status').status_code, 200)
+            self.assertEqual(self.client.post('/api/v1/updates/defer').status_code, 200)
+        check.assert_not_called()
+
+    def test_update_install_is_not_supported_by_source_checkout(self):
+        self.assertEqual(self.client.post('/api/v1/updates/install').status_code, 409)
+
+    def test_update_hold_tracks_unsaved_tabs(self):
+        with patch.object(routes.update_manager, 'hold') as hold:
+            response = self.client.post('/api/v1/updates/hold', json={'client_id': 'test-tab', 'dirty': True})
+        self.assertEqual(response.json(), {'held': True})
+        hold.assert_called_once_with('test-tab', True)
 
     def test_project_document_search_and_revision_api(self):
         response = self.client.post(

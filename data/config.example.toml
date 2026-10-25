@@ -14,6 +14,10 @@ sync_debounce_seconds = 10
 retry_enabled = true
 periodic_check_seconds = 60
 
+[github]
+enabled = true
+repository_name = "docs-local-backup"
+
 [editor]
 autosave_enabled = true
 autosave_debounce_ms = 1000
