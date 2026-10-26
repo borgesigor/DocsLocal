@@ -25,6 +25,14 @@ python -m app.tray
 
 O servidor aceita somente loopback (`127.0.0.1`, `localhost` ou `::1`) e não oferece autenticação multiusuário. Não o exponha diretamente à internet.
 
+### Endereço interno: http://docs.local
+
+Você pode usar **[http://docs.local](http://docs.local)** para abrir o aplicativo e como origem dos links na documentação e nas automações. No Windows, clique em **Configurar http://docs.local** no menu do ícone da bandeja e aceite a solicitação de administrador. A configuração persiste entre reinicializações: adiciona `127.0.0.1 docs.local` ao arquivo `hosts` e encaminha a porta `127.0.0.1:80` para a porta configurada do app (8765 por padrão), sem abrir acesso pela rede. A porta 80 precisa estar livre; encaminhamentos existentes para outros serviços são preservados.
+
+O aplicativo precisa estar em execução. Após configurar, a bandeja passa a abrir esse endereço quando a API responde nele. O endereço alternativo `http://127.0.0.1:8765` continua disponível. Para executar pelo código, também é possível rodar `app/static/configure-local-url.ps1` no PowerShell como administrador, informando `-Port` e `-ServerHost` se necessário. Se mudar a porta do servidor, ajuste o encaminhamento local antes de reutilizar o alias.
+
+A API pode ser consultada em [http://docs.local/docs](http://docs.local/docs), com contrato em `/openapi.json`. O guia padrão explica esse endereço e disponibiliza a skill completa para agentes em `docs/skill/SKILL.md`, acompanhada de `references/http-workflow.md` e `references/api-documentation.md`.
+
 ## Login com GitHub
 
 Clique em **Logar com GitHub**, copie o código mostrado pelo Docs Local e informe-o na página oficial do GitHub que será aberta. Autorize o aplicativo; o Docs Local detecta a autorização automaticamente e conecta sua conta. O GitHub abre em uma aba normal, sem pop-up. Depois de autorizar, volte à aba do Docs Local. Se a abertura for bloqueada pelo navegador, use **Abrir GitHub** no diálogo. O código expira em até 15 minutos e o login pode ser cancelado no aplicativo.
@@ -83,7 +91,7 @@ gh release create v1.1.0 dist/DocsLocal.exe dist/DocsLocal.exe.sha256 --target m
 
 Configuração e documentos ficam localmente em `%LOCALAPPDATA%\DocsLocal` para o `.exe`, ou em `data/` quando executado a partir do código. O cofre OAuth usa Windows DPAPI.
 
-Na primeira inicialização, cada instalação recebe o projeto **Guia do Docs Local**, com instruções de uso que funcionam offline. O guia pode ser editado ou arquivado e não é recriado ao reiniciar. Cada usuário configura seu próprio login e backup. Consulte [PRIVACY.md](PRIVACY.md) para os detalhes do isolamento por conta do Windows.
+Cada instalação recebe o projeto **Guia do Docs Local**, a documentação padrão do app, com instruções offline e a skill Markdown para agentes. **O projeto e todos os seus itens não podem ser excluídos ou arquivados pela interface nem pela API**, incluindo documentos, pastas e anexos adicionados ao guia. Edições são preservadas ao reiniciar. Instalações anteriores recebem a proteção e os arquivos ausentes da skill; um guia arquivado é reativado e um guia ausente é recriado. Cada usuário configura seu próprio login e backup. Consulte [PRIVACY.md](PRIVACY.md) para os detalhes do isolamento por conta do Windows.
 
 ## Desenvolvimento
 

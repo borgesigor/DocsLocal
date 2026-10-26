@@ -6,7 +6,7 @@ import uuid
 
 from app.core.exceptions import AppError
 from app.core.security import document_path, inside, project_folder_path
-from app.services.project_service import get_folder, now
+from app.services.project_service import ensure_deletable, get_folder, now
 from app.services.storage import atomic_write, repository_operation
 
 DOCUMENT_METADATA = re.compile(
@@ -173,7 +173,8 @@ def update_document(
 
 @repository_operation
 def delete_document(project_id: str, document_id: str):
-    project_folder, _ = get_folder(project_id)
+    project_folder, project = get_folder(project_id)
+    ensure_deletable(project)
     path, _, _ = find_document(project_folder, document_id)
     if path == project_folder / 'index.md':
         raise AppError(400, 'protected_document', 'O documento inicial não pode ser excluído.')

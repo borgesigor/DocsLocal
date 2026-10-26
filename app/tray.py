@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 import sys
+import subprocess
 import threading
 import time
 import urllib.request
@@ -17,7 +18,7 @@ import uvicorn
 
 from app.core.config import CONFIG, STATE
 from app.main import app
-from app.services import updater
+from app.services import local_url_service, updater
 from app.services.update_service import update_manager
 from app.version import VERSION
 
@@ -53,6 +54,7 @@ MENU_RESTART = 1002
 MENU_STOP = 1003
 MENU_EXIT = 1004
 MENU_CHECK_UPDATES = 1005
+MENU_CONFIGURE_URL = 1006
 UPDATE_SHUTDOWN_MESSAGE = WM_USER + 2
 UPDATE_CHECK_INTERVAL_SECONDS = 6 * 60 * 60
 UPDATE_STARTUP_DELAY_SECONDS = 60
@@ -262,8 +264,12 @@ class DocsLocalTray:
 
     @property
     def server_url(self) -> str:
+        if local_url_service.is_available():
+            return local_url_service.LOCAL_URL
         host = CONFIG['server']['host']
         port = int(CONFIG['server']['port'])
+        if host == '::1':
+            host = '[::1]'
         return f'http://{host}:{port}'
 
     def run(self) -> None:
@@ -427,6 +433,7 @@ class DocsLocalTray:
         self._user32.AppendMenuW(menu, MF_STRING, MENU_RESTART, 'Reiniciar servidor')
         self._user32.AppendMenuW(menu, MF_STRING, MENU_STOP, 'Encerrar servidor')
         self._user32.AppendMenuW(menu, MF_STRING, MENU_CHECK_UPDATES, 'Verificar atualizações')
+        self._user32.AppendMenuW(menu, MF_STRING, MENU_CONFIGURE_URL, 'Configurar http://docs.local')
         self._user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
         self._user32.AppendMenuW(menu, MF_STRING, MENU_EXIT, 'Sair do Docs Local')
 
@@ -464,6 +471,17 @@ class DocsLocalTray:
             self._user32.DestroyWindow(self._window_handle)
         elif command == MENU_CHECK_UPDATES:
             self._start_update_check(manual=True)
+        elif command == MENU_CONFIGURE_URL:
+            threading.Thread(target=self._configure_local_url, daemon=True).start()
+
+    def _configure_local_url(self) -> None:
+        try:
+            local_url_service.configure(CONFIG['server']['host'], int(CONFIG['server']['port']))
+            message = 'Endereço configurado: http://docs.local. Você pode usá-lo na documentação e nas automações.'
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            LOGGER.exception('Falha ao configurar docs.local.')
+            message = 'Não foi possível configurar docs.local. Aceite a solicitação de administrador e confira se a porta 80 está livre. O endereço alternativo continua disponível.'
+        self._user32.MessageBoxW(self._window_handle, message, 'Endereço interno do Docs Local', MB_ICONINFORMATION | MB_TOPMOST)
 
     def _open_docs(self) -> None:
         self._server_stopped_by_user = False

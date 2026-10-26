@@ -56,6 +56,34 @@ class ApiTests(unittest.TestCase):
         openapi = self.client.get('/openapi.json').json()
         self.assertIn('/api/v1/projects', openapi['paths'])
 
+    def test_internal_hostname_accepts_same_origin_and_rejects_foreign_origin(self):
+        response = self.client.get('/api/v1/health', headers={'host': 'docs.local'})
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post('/api/v1/projects', json={'name': 'Alias'},
+                                    headers={'host': 'docs.local', 'origin': 'http://docs.local'})
+        self.assertEqual(response.status_code, 201)
+        response = self.client.post('/api/v1/projects', json={'name': 'Blocked'},
+                                    headers={'host': 'docs.local', 'origin': 'http://foreign.local'})
+        self.assertEqual(response.status_code, 403)
+
+    def test_default_guide_rejects_all_deletions_and_archival_through_api(self):
+        from app.services.onboarding_service import ensure_welcome_documentation
+        ensure_welcome_documentation(self.state_folder)
+        project = project_service.list_projects()[0]
+        base = f"/api/v1/projects/{project['id']}"
+        created = self.client.post(f'{base}/documents', json={'path': 'docs/extra.md'}).json()
+        self.client.post(f'{base}/folders', json={'path': 'docs/empty'}).raise_for_status()
+        self.client.post(f'{base}/files', files={'file': ('sample.txt', b'example', 'text/plain')}).raise_for_status()
+        for path in (f'{base}?confirm=true', f"{base}/documents/{created['id']}",
+                     f'{base}/folders?path=docs/empty', f'{base}/files/sample.txt'):
+            with self.subTest(path=path):
+                response = self.client.delete(path)
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.json()['error']['code'], 'protected_guide')
+        self.assertEqual(self.client.patch(base, json={'archived': True}).status_code, 403)
+        self.assertEqual(self.client.get(f'{base}/files/sample.txt').content, b'example')
+        self.assertEqual(self.client.get(f"{base}/documents/{created['id']}").status_code, 200)
+
     def test_document_urls_serve_the_viewer_on_direct_access_and_refresh(self):
         project = self.client.post('/api/v1/projects', json={'name': 'Projeto'}).json()
         project_id = project['id']

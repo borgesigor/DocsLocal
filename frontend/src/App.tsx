@@ -107,6 +107,7 @@ import {
 import { remarkHeadingAnchors } from "@/lib/markdown-anchors"
 
 type Project = {
+  protected?: boolean
   id: string
   name: string
   description: string
@@ -1017,6 +1018,7 @@ function App() {
                           </ContextMenuItem>
                           <ContextMenuItem
                             variant="destructive"
+                            disabled={item.protected}
                             onClick={() => openProjectDeleteDialog(item)}
                           >
                             <Trash2 /> Excluir projeto
@@ -1226,6 +1228,7 @@ function App() {
                 ) : filteredTree.length ? (
                   <FileTree
                     nodes={filteredTree}
+                    protectedProject={project?.protected ?? false}
                     selectedId={document?.id}
                     onSelect={(id) => project && openDocument(project.id, id)}
                     onRename={openRenameDialog}
@@ -1614,6 +1617,7 @@ function FileTree({
   onDelete,
   onCreateDocument,
   onCreateFolder,
+  protectedProject = false,
   depth = 0,
   parentPath = "",
 }: {
@@ -1624,6 +1628,7 @@ function FileTree({
   onDelete: (target: TreeActionTarget) => void
   onCreateDocument: (parentPath: string) => void
   onCreateFolder: (parentPath: string) => void
+  protectedProject?: boolean
   depth?: number
   parentPath?: string
 }) {
@@ -1638,6 +1643,7 @@ function FileTree({
             onSelect={onSelect}
             onRename={onRename}
             onDelete={onDelete}
+            protectedProject={protectedProject}
             onCreateDocument={onCreateDocument}
             onCreateFolder={onCreateFolder}
             depth={depth}
@@ -1682,7 +1688,7 @@ function FileTree({
               <ContextMenuGroup>
                 <ContextMenuItem
                   variant="destructive"
-                  disabled={node.path === "index.md"}
+                  disabled={protectedProject || node.path === "index.md"}
                   onClick={() =>
                     node.path &&
                     onDelete({
@@ -1713,6 +1719,7 @@ function FolderTreeItem({
   onDelete,
   onCreateDocument,
   onCreateFolder,
+  protectedProject = false,
   depth,
 }: {
   node: TreeNode
@@ -1723,6 +1730,7 @@ function FolderTreeItem({
   onDelete: (target: TreeActionTarget) => void
   onCreateDocument: (parentPath: string) => void
   onCreateFolder: (parentPath: string) => void
+  protectedProject?: boolean
   depth: number
 }) {
   const [open, setOpen] = React.useState(true)
@@ -1764,6 +1772,7 @@ function FolderTreeItem({
             </ContextMenuItem>
             <ContextMenuItem
               variant="destructive"
+              disabled={protectedProject}
               onClick={() => onDelete(target)}
             >
               <Trash2 /> Excluir
@@ -1778,6 +1787,7 @@ function FolderTreeItem({
           onSelect={onSelect}
           onRename={onRename}
           onDelete={onDelete}
+          protectedProject={protectedProject}
           onCreateDocument={onCreateDocument}
           onCreateFolder={onCreateFolder}
           depth={depth + 1}

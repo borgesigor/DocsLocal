@@ -452,6 +452,9 @@ class GitHubSync:
             return github_api(*args, **kwargs)
 
         result = BackupSync(REPO, self._store(), transfer, self._shutdown_requested.is_set).synchronize(repository, token, self._get_branch_reference)
+        if result.restored:
+            from app.services.onboarding_service import ensure_welcome_documentation
+            ensure_welcome_documentation(self.state_folder or STATE)
         self._needs_restore = False
         self.status['conflicts'] = result.conflicts
         if result.restored:

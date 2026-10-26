@@ -276,7 +276,8 @@ async def move_folder(project_id: str, request: Request):
 
 @api.delete('/projects/{project_id}/folders')
 async def delete_folder(project_id: str, path: str):
-    project_folder, _ = projects.get_folder(project_id)
+    project_folder, project = projects.get_folder(project_id)
+    projects.ensure_deletable(project)
     folder_path = project_folder_path(project_folder, path)
     if not folder_path.is_dir():
         raise AppError(404, 'folder_not_found', 'Pasta não encontrada.')
@@ -347,7 +348,8 @@ def download_file(project_id: str, filename: str):
 
 @api.delete('/projects/{project_id}/files/{filename:path}')
 async def delete_file(project_id: str, filename: str):
-    project_folder, _ = projects.get_folder(project_id)
+    project_folder, project = projects.get_folder(project_id)
+    projects.ensure_deletable(project)
     file_path = inside(
         project_folder / 'assets',
         project_folder / 'assets' / relative_doc_path(filename),

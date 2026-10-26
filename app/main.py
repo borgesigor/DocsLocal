@@ -82,7 +82,7 @@ app = FastAPI(
 app.add_exception_handler(AppError, app_error_handler)
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=['127.0.0.1', 'localhost', '::1', 'testserver'],
+    allowed_hosts=['127.0.0.1', 'localhost', '::1', 'docs.local', 'testserver'],
 )
 
 

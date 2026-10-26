@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docs Local"
+  short_description: "Consulte e mantenha documentação no Docs Local"
+  default_prompt: "Use $docslocal para consultar e atualizar a documentação do projeto pela API local."

@@ -1,9 +1,10 @@
-"""Create an editable local guide once for each installation."""
+"""Maintain the protected local guide and its bundled agent skill."""
 
 from pathlib import Path
 
-from app.services import project_service
+from app.services import document_service, project_service
 from app.services.storage import atomic_write, repository_operation
+from app.services.toml_writer import dumps_values
 
 WELCOME_CONTENT = '''# Bem-vindo ao Docs Local
 
@@ -98,20 +99,70 @@ atualizar imediatamente ou adiar por uma hora. O documento aberto é salvo,
 o executável é verificado por SHA-256 e o aplicativo fecha e reinicia.
 Os documentos locais e os arquivos ainda na fila de backup são preservados.
 
-Este guia é um documento local comum: você pode editar, renomear ou excluir.
-Ele é criado apenas uma vez e suas alterações são preservadas ao reiniciar.
+O projeto **Guia do Docs Local** é a documentação padrão do aplicativo.
+Ele e todos os seus itens (documentos, pastas e anexos) não podem ser excluídos
+ou arquivados, tanto pela interface quanto pela API. Edições são preservadas.
+
+## Endereço interno e skill para agentes
+
+Você pode usar [http://docs.local](http://docs.local) para abrir o aplicativo,
+na documentação e em links de automações locais. No Windows, use **Configurar
+http://docs.local** no menu do ícone da bandeja e aceite a solicitação de
+administrador uma vez. O endereço funciona somente neste computador e requer
+o aplicativo em execução. A API está em [http://docs.local/docs](http://docs.local/docs).
+O endereço alternativo é [http://127.0.0.1:8765](http://127.0.0.1:8765).
+
+Este guia inclui a [skill Markdown do Docs Local](docs/skill/SKILL.md),
+com instruções para qualquer agente consultar, pesquisar e atualizar documentos.
+Copie o conteúdo para `docslocal/SKILL.md` no diretório de skills do seu agente,
+junto da pasta `references` com os documentos
+[HTTP](docs/skill/references/http-workflow.md) e
+[contratos de API](docs/skill/references/api-documentation.md).
+Consulte a skill antes de automatizar escritas e respeite revisões concorrentes.
 '''
 
 
 @repository_operation
 def ensure_welcome_documentation(state_folder: Path) -> None:
     marker = state_folder / 'welcome-documentation-v1'
+    project = None
     if marker.exists():
-        return
+        project_id = marker.read_text(encoding='utf-8').strip()
+        project = next((item for item in project_service.list_projects(include_archived=True)
+                        if item['id'] == project_id), None)
+    if project is None:
+        project = next((item for item in project_service.list_projects(include_archived=True)
+                        if item.get('protected')), None)
+    if project is None:
+        project = project_service.create_project(
+            'Guia do Docs Local',
+            'Primeiros passos, edição em Markdown, API e skill para agentes.',
+            initial_content=WELCOME_CONTENT,
+        )
+    folder, metadata = project_service.get_folder(project['id'], include_archived=True)
+    if not metadata.get('protected') or metadata.get('archived'):
+        metadata.update(protected=True, archived=False)
+        atomic_write(folder / 'project.toml', dumps_values(metadata))
 
-    project = project_service.create_project(
-        'Guia do Docs Local',
-        'Primeiros passos, edição em Markdown e backup no GitHub.',
-        initial_content=WELCOME_CONTENT,
-    )
+    if not (folder / 'index.md').exists():
+        document_service.create_document(project['id'], 'index.md', content=WELCOME_CONTENT)
+    welcome = next(doc for doc in document_service.list_documents(project['id'])
+                   if doc['path'] == 'index.md')
+    upgrade_marker = state_folder / 'welcome-documentation-v2'
+    migration_key = project['id'] + ':' + welcome['id'] + '\n'
+    if not upgrade_marker.exists() or upgrade_marker.read_text(encoding='utf-8') != migration_key:
+        document = document_service.read_document(project['id'], welcome['id'])
+        if '## Endereço interno e skill para agentes' not in document['content']:
+            content = document['content'].replace(
+                'Este guia é um documento local comum: você pode editar, renomear ou excluir.',
+                'Este guia e todos os seus itens são protegidos contra exclusão e arquivamento.')
+            content += '\n\n' + WELCOME_CONTENT[WELCOME_CONTENT.index('O projeto **Guia do Docs Local**'):]
+            document_service.update_document(project['id'], document['id'], content, document['revision'])
+        atomic_write(upgrade_marker, migration_key)
+
+    resources = Path(__file__).parents[1] / 'static' / 'agent-skill'
+    for source in sorted(resources.rglob('*.md')):
+        path = 'docs/skill/' + source.relative_to(resources).as_posix()
+        if not (folder / path).exists():
+            document_service.create_document(project['id'], path, content=source.read_text(encoding='utf-8'))
     atomic_write(marker, project['id'] + '\n')

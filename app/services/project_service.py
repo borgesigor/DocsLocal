@@ -141,6 +141,9 @@ def initialize_project(
 def update_project(project_id: str, patch: dict):
     folder, project = get_folder(project_id, include_archived=True)
 
+    if patch.get('archived'):
+        ensure_deletable(project)
+
     for field in ('name', 'description', 'archived'):
         if field in patch and patch[field] is not None:
             value = patch[field]
@@ -165,3 +168,9 @@ def touch_project(project_id: str):
 
 def delete_project(project_id: str):
     return update_project(project_id, {'archived': True})
+
+
+def ensure_deletable(project: dict) -> None:
+    if project.get('protected', False):
+        raise AppError(403, 'protected_guide',
+                       'O Guia do Docs Local e todos os seus itens não podem ser excluídos ou arquivados.')
