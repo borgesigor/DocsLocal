@@ -55,7 +55,25 @@ No Windows, compile a interface, instale `requirements-build.txt` e execute `scr
 
 A build inclui os recursos TLS exigidos pela distribuição do Python e executa um teste TLS no próprio `.exe` antes de gerar o checksum. Para conferir também a consulta HTTPS ao GitHub, execute `DocsLocal.exe --check-update-network C:\caminho\relatorio.json`; o relatório registra se a conexão e a validação dos certificados funcionaram.
 
-Para publicar outra versão, atualize `app/version.py`, reconstrua o executável e envie o commit para o GitHub. Publique uma release estável com tag `vMAJOR.MINOR.PATCH` e os arquivos `DocsLocal.exe` e `DocsLocal.exe.sha256`, mantendo esses nomes. Exemplo com o GitHub CLI:
+### Build e release pelo GitHub Actions
+
+O workflow `.github/workflows/release.yml` compila no Windows x64 e publica uma release ao receber uma tag `vMAJOR.MINOR.PATCH`. Ele instala as dependências, testa a interface e o aplicativo, compila a interface e executa `scripts/build-windows.ps1`, incluindo o teste TLS do executável. A tag precisa corresponder a `VERSION` em `app/version.py`.
+
+Atualize `app/version.py`, faça commit das mudanças que deseja distribuir e envie o commit e a tag. Por exemplo, para `VERSION = '1.1.4'`:
+
+```powershell
+git push origin HEAD
+git tag v1.1.4
+git push origin v1.1.4
+```
+
+Acompanhe em **Actions → Build e release Windows**. O workflow publica `DocsLocal.exe` e `DocsLocal.exe.sha256` com notas automáticas, usando o `GITHUB_TOKEN` fornecido pelo Actions, sem cadastrar um token pessoal. A release permanece em rascunho até o envio dos dois arquivos terminar, para que o atualizador só encontre releases completas.
+
+Também é possível executar **Run workflow** informando uma tag que já exista no GitHub. Uma release existente não é sobrescrita: se a publicação falhar depois de criar o rascunho, confira os arquivos e conclua a publicação pela página de releases. Se falhar antes de criar o rascunho, corrija a causa e execute novamente para a mesma tag. As políticas do repositório precisam permitir GitHub Actions e a permissão `contents: write` para o workflow.
+
+### Publicação manual
+
+Para publicar uma build feita localmente, atualize `app/version.py`, reconstrua o executável e envie o commit para o GitHub. Publique uma release estável com tag `vMAJOR.MINOR.PATCH` e os arquivos `DocsLocal.exe` e `DocsLocal.exe.sha256`, mantendo esses nomes. Não envie a tag separadamente se for usar este caminho, pois o push da tag dispara o workflow. Exemplo com o GitHub CLI:
 
 ```powershell
 gh release create v1.1.0 dist/DocsLocal.exe dist/DocsLocal.exe.sha256 --target main --title "Docs Local v1.1.0" --generate-notes
