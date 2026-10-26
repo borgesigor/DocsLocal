@@ -1,4 +1,5 @@
 import tempfile
+import shutil
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -28,13 +29,13 @@ class ApiTests(unittest.TestCase):
             patch.object(routes, 'REPO', self.repository),
             patch.object(routes, 'PROJECTS', self.projects_folder),
             patch.object(project_service, 'PROJECTS', self.projects_folder),
+            patch.object(project_service, 'SYSTEM_PROJECTS', self.test_root / 'system-projects'),
             patch.object(git_service, 'REPO', self.repository),
             patch.object(github_service, 'REPO', self.repository),
             patch.object(routes.sync_manager, 'state_folder', self.state_folder),
             patch.object(git_service, 'STATE', self.state_folder),
             patch.object(git_service, 'STATUS_FILE', self.state_folder / 'sync.json'),
             patch.object(instance_lock, 'STATE', self.state_folder),
-            patch.object(main, 'ensure_welcome_documentation'),
             patch.dict(config.CONFIG['git'], {'enabled': False}),
             patch.dict(config.CONFIG['github'], {'enabled': False}),
         ]
@@ -67,13 +68,15 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_default_guide_rejects_all_deletions_and_archival_through_api(self):
-        from app.services.onboarding_service import ensure_welcome_documentation
-        ensure_welcome_documentation(self.state_folder)
-        project = project_service.list_projects()[0]
+        project = project_service.create_project('Guia do Docs Local')
         base = f"/api/v1/projects/{project['id']}"
         created = self.client.post(f'{base}/documents', json={'path': 'docs/extra.md'}).json()
         self.client.post(f'{base}/folders', json={'path': 'docs/empty'}).raise_for_status()
         self.client.post(f'{base}/files', files={'file': ('sample.txt', b'example', 'text/plain')}).raise_for_status()
+        folder, metadata = project_service.get_folder(project['id'])
+        from app.services.toml_writer import dumps_values
+        metadata['protected'] = True
+        (folder / 'project.toml').write_text(dumps_values(metadata), encoding='utf-8')
         for path in (f'{base}?confirm=true', f"{base}/documents/{created['id']}",
                      f'{base}/folders?path=docs/empty', f'{base}/files/sample.txt'):
             with self.subTest(path=path):
@@ -83,6 +86,41 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.patch(base, json={'archived': True}).status_code, 403)
         self.assertEqual(self.client.get(f'{base}/files/sample.txt').content, b'example')
         self.assertEqual(self.client.get(f"{base}/documents/{created['id']}").status_code, 200)
+
+    def test_default_guide_is_read_only_for_content_paths_and_new_items(self):
+        shutil.copytree(config.SYSTEM_PROJECTS, self.test_root / 'system-projects')
+        project = project_service.list_projects()[0]
+        base = f"/api/v1/projects/{project['id']}"
+        for doc in self.client.get(f'{base}/documents').json():
+            url = f"{base}/documents/{doc['id']}"
+            original = self.client.get(url).json()
+            changes = (
+                ('put', {'content': '# Changed', 'revision': original['revision']}),
+                ('patch', {'title': 'Changed'}),
+                ('patch', {'path': 'docs/moved.md'}),
+            )
+            for method, payload in changes:
+                with self.subTest(path=doc['path'], method=method, payload=payload):
+                    response = getattr(self.client, method)(url, json=payload)
+                    self.assertEqual(response.status_code, 403)
+            self.assertEqual(self.client.get(url).json(), original)
+        self.assertEqual(self.client.post(f'{base}/documents', json={'path': 'docs/new.md'}).status_code, 403)
+        self.assertEqual(self.client.post(f'{base}/folders', json={'path': 'docs/new'}).status_code, 403)
+        self.assertEqual(self.client.patch(f'{base}/folders', json={'path': 'docs/a', 'new_path': 'docs/b'}).status_code, 403)
+        self.assertEqual(self.client.patch(base, json={'name': 'Changed'}).status_code, 403)
+        self.assertEqual(self.client.post(f'{base}/files', files={'file': ('new.txt', b'new')}).status_code, 403)
+
+    def test_project_list_and_file_tree_include_system_and_user_projects(self):
+        shutil.copytree(config.SYSTEM_PROJECTS, self.test_root / 'system-projects')
+        user = project_service.create_project('User documentation')
+        listed = {project['id']: project for project in self.client.get('/api/v1/projects').json()}
+        self.assertIn(user['id'], listed)
+        self.assertTrue(listed['guia-do-docs-local']['system'])
+        response = self.client.get('/api/v1/projects/guia-do-docs-local/tree')
+        self.assertEqual(response.status_code, 200)
+        paths = {node.get('path') for node in response.json()}
+        self.assertIn('index.md', paths)
+        self.assertIn('skill.md', paths)
 
     def test_document_urls_serve_the_viewer_on_direct_access_and_refresh(self):
         project = self.client.post('/api/v1/projects', json={'name': 'Projeto'}).json()
@@ -103,6 +141,16 @@ class ApiTests(unittest.TestCase):
                     self.assertEqual(response.status_code, 200)
                     self.assertIn('text/html', response.headers['content-type'])
                     self.assertEqual(response.content, self.client.get('/').content)
+
+    def test_markdown_viewer_supports_root_and_arbitrary_project_folders(self):
+        project = project_service.create_project('Anywhere')
+        folder, _ = project_service.get_folder(project['id'])
+        (folder / 'abc').mkdir()
+        for path in ('skill.md', 'abc/note.md'):
+            (folder / path).write_text('# Note', encoding='utf-8')
+            response = self.client.get(f"/{project['id']}/{path}")
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('text/html', response.headers['content-type'])
 
     def test_document_urls_do_not_expose_other_files_or_hide_missing_api_routes(self):
         project = self.client.post('/api/v1/projects', json={'name': 'Projeto'}).json()

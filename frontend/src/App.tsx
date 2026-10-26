@@ -2,7 +2,6 @@ import * as React from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
-  BookOpen,
   CircleAlert,
   CircleCheck,
   ChevronRight,
@@ -105,6 +104,7 @@ import {
   readWorkspaceRoute,
 } from "@/lib/workspace-route"
 import { remarkHeadingAnchors } from "@/lib/markdown-anchors"
+import { extractFrontmatter } from "@/lib/markdown-frontmatter"
 
 type Project = {
   protected?: boolean
@@ -922,9 +922,7 @@ function App() {
       <Sidebar collapsible="none" className="border-r border-border">
         <SidebarHeader className="gap-5 p-5">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <BookOpen className="size-5" />
-            </div>
+            <img src="/static/docs-local.ico" alt="" className="size-10 shrink-0 object-contain" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold tracking-tight">
                 Docs Local
@@ -1012,6 +1010,7 @@ function App() {
                         <ContextMenuGroup>
                           <ContextMenuLabel>{item.name}</ContextMenuLabel>
                           <ContextMenuItem
+                            disabled={item.protected}
                             onClick={() => openProjectRenameDialog(item)}
                           >
                             <Pencil /> Renomear projeto
@@ -1202,7 +1201,7 @@ function App() {
                   variant="ghost"
                   size="icon-sm"
                   aria-label="Criar documento"
-                  disabled={!project}
+                  disabled={!project || project.protected}
                   onClick={() => openDocumentCreator("docs")}
                 >
                   <Plus className="size-4" />
@@ -1297,9 +1296,10 @@ function App() {
                         <Button
                           variant="outline"
                           size="sm"
+                          disabled={project?.protected}
                           onClick={() => setEditing(true)}
                         >
-                          <Pencil className="size-4" /> Editar Markdown
+                          <Pencil className="size-4" /> {project?.protected ? "Somente leitura" : "Editar Markdown"}
                         </Button>
                       )}
                     </div>
@@ -1670,7 +1670,7 @@ function FileTree({
                   <FileText /> Abrir
                 </ContextMenuItem>
                 <ContextMenuItem
-                  disabled={node.path === "index.md"}
+                  disabled={protectedProject || node.path === "index.md"}
                   onClick={() =>
                     node.path &&
                     onRename({
@@ -1758,16 +1758,16 @@ function FolderTreeItem({
         <ContextMenuContent>
           <ContextMenuGroup>
             <ContextMenuLabel>{node.name}</ContextMenuLabel>
-            <ContextMenuItem onClick={() => onCreateDocument(path)}>
+            <ContextMenuItem disabled={protectedProject} onClick={() => onCreateDocument(path)}>
               <FilePlus2 /> Novo documento
             </ContextMenuItem>
-            <ContextMenuItem onClick={() => onCreateFolder(path)}>
+            <ContextMenuItem disabled={protectedProject} onClick={() => onCreateFolder(path)}>
               <FolderPlus /> Nova pasta
             </ContextMenuItem>
           </ContextMenuGroup>
           <ContextMenuSeparator />
           <ContextMenuGroup>
-            <ContextMenuItem onClick={() => onRename(target)}>
+            <ContextMenuItem disabled={protectedProject} onClick={() => onRename(target)}>
               <Pencil /> Renomear
             </ContextMenuItem>
             <ContextMenuItem
@@ -1799,12 +1799,21 @@ function FolderTreeItem({
 }
 
 function Markdown({ content }: { content: string }) {
+  const { metadata, body } = extractFrontmatter(content)
   return (
-    <div className="text-[15px] leading-7 break-words text-foreground [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_blockquote]:my-6 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/50 [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground [&_code]:rounded-md [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_h1]:mt-0 [&_h1]:mb-8 [&_h1]:text-4xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:mt-10 [&_h2]:mb-4 [&_h2]:border-b [&_h2]:pb-2 [&_h2]:text-2xl [&_h2]:font-semibold [&_h3]:mt-8 [&_h3]:mb-3 [&_h3]:text-xl [&_h3]:font-semibold [&_hr]:my-8 [&_hr]:border-border [&_li]:my-1 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-4 [&_pre]:my-5 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:bg-muted/60 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:my-6 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:px-3 [&_td]:py-2 [&_th]:border [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkHeadingAnchors]}>
-        {content}
-      </ReactMarkdown>
-    </div>
+    <>
+      {metadata !== null && (
+        <section aria-label="Metadados do documento" className="mb-6 rounded-lg border border-border bg-muted/50 p-4">
+          <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">Metadados</p>
+          <pre className="mt-2 font-mono text-xs leading-5 break-words whitespace-pre-wrap text-muted-foreground">{metadata}</pre>
+        </section>
+      )}
+      <div className="text-[15px] leading-7 break-words text-foreground [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_blockquote]:my-6 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/50 [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground [&_code]:rounded-md [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_h1]:mt-0 [&_h1]:mb-8 [&_h1]:text-4xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:mt-10 [&_h2]:mb-4 [&_h2]:border-b [&_h2]:pb-2 [&_h2]:text-2xl [&_h2]:font-semibold [&_h3]:mt-8 [&_h3]:mb-3 [&_h3]:text-xl [&_h3]:font-semibold [&_hr]:my-8 [&_hr]:border-border [&_li]:my-1 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-4 [&_pre]:my-5 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:bg-muted/60 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:my-6 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:px-3 [&_td]:py-2 [&_th]:border [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6">
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkHeadingAnchors]}>
+          {body}
+        </ReactMarkdown>
+      </div>
+    </>
   )
 }
 

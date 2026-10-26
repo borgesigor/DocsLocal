@@ -43,12 +43,8 @@ export function readWorkspaceRoute(url: URL): WorkspaceRoute {
   const documentPath = documentSegments.join("/") || null
   if (
     documentPath &&
-    documentPath !== "index.md" &&
-    !(
-      documentSegments[0] === "docs" &&
-      documentSegments.length > 1 &&
-      documentPath.endsWith(".md")
-    )
+    (!documentPath.toLowerCase().endsWith(".md") ||
+      documentSegments.some((segment) => segment.toLowerCase() === ".git"))
   ) {
     return { ...empty, invalid: true }
   }

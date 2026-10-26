@@ -9,6 +9,7 @@ import re
 from urllib.parse import quote
 
 from app.core.security import inside, validate_path_components
+from app.core.system_projects import is_system_project_path
 from app.services.storage import atomic_write, repository_operation
 from app.services.sync_merge import blob_sha, merge_snapshots, snapshot_hashes
 
@@ -35,7 +36,7 @@ def local_snapshot(root: Path) -> dict[str, bytes]:
     snapshot = {}
     for path in root.rglob('*'):
         relative = path.relative_to(root)
-        if '.git' in relative.parts or path.is_symlink() or not path.is_file():
+        if '.git' in relative.parts or path.is_symlink() or not path.is_file() or is_system_project_path(relative.as_posix()):
             continue
         inside(root, path)
         snapshot[relative.as_posix()] = path.read_bytes()
@@ -73,17 +74,18 @@ class BackupState:
             return {}
         if any(not isinstance(path, str) or not isinstance(sha, str) or not re.fullmatch('[a-f0-9]{40}', sha) for path, sha in values.items()):
             return {}
-        return values
+        return {path: sha for path, sha in values.items() if not is_system_project_path(path)}
 
     def save_baseline(self, repository: str, files: dict[str, bytes]) -> None:
-        atomic_write(self.folder / self._baseline_name(repository), json.dumps({'files': snapshot_hashes(files)}))
+        user_files = {path: content for path, content in files.items() if not is_system_project_path(path)}
+        atomic_write(self.folder / self._baseline_name(repository), json.dumps({'files': snapshot_hashes(user_files)}))
 
     def pending_paths(self, files: dict[str, bytes], repository: str | None = None) -> list[str]:
         if repository is None:
             cached = self.session().get('repository')
             repository = self.binding(cached) if cached else ''
         baseline = self.baseline(repository)
-        current = snapshot_hashes(files)
+        current = snapshot_hashes({path: content for path, content in files.items() if not is_system_project_path(path)})
         return sorted(path for path in baseline.keys() | current.keys() if baseline.get(path) != current.get(path))
 
     def record_pending(self, paths: list[str]) -> None:
@@ -117,12 +119,17 @@ class BackupSync:
         remote = self._download_files(entries, initial, repository_path, token)
         binding = self.state.binding(repository)
         baseline = self.state.baseline(binding)
-        local = self._without_default_guide_collision(initial, remote, baseline)
-        plan = merge_snapshots(local, remote, baseline)
+        plan = merge_snapshots(initial, remote, baseline)
 
         # Restore before publishing; files edited during network I/O stay in the outbox.
         restored = self._apply_local(initial, plan.files)
         changes = self._upload_changes(plan.files, entries, repository_path, token)
+        # Retire copies written by older versions; Git history retains their content.
+        for entry in tree.get('tree', []):
+            remote_path = entry.get('path', '')
+            if (entry.get('type') == 'blob' and remote_path.startswith(SYNC_ROOT + '/')
+                    and is_system_project_path(remote_path[len(SYNC_ROOT) + 1:])):
+                changes.append({'path': remote_path, 'mode': FILE_MODE, 'type': 'blob', 'sha': None})
         marker = next((entry for entry in tree['tree'] if entry.get('path') == MARKER_PATH), None)
         if marker is None:
             changes.append(self._upload_blob(MARKER_PATH, MARKER_CONTENT, repository_path, token))
@@ -142,20 +149,6 @@ class BackupSync:
         return BackupResult(plan.conflicts, restored, len(changes))
 
     @staticmethod
-    def _without_default_guide_collision(local: dict, remote: dict, baseline: dict) -> dict:
-        from app.services.onboarding_service import WELCOME_CONTENT
-        from app.services.sync_merge import DOCUMENT_ID
-
-        local = dict(local)
-        guide = 'projetos/guia-do-docs-local/index.md'
-        if guide in local and guide in remote and guide not in baseline:
-            metadata = DOCUMENT_ID.match(local[guide])
-            if metadata and local[guide][metadata.end():].replace(b'\r\n', b'\n') == WELCOME_CONTENT.encode():
-                local.pop(guide)
-                local.pop('projetos/guia-do-docs-local/project.toml', None)
-        return local
-
-    @staticmethod
     def _managed_entries(tree: dict) -> tuple[dict, bool]:
         if tree.get('truncated'):
             raise RuntimeError('O repositório tem arquivos demais para uma sincronização segura.')
@@ -170,6 +163,10 @@ class BackupSync:
             if not remote_path.startswith(SYNC_ROOT + '/') or remote_path == LEGACY_MARKER_PATH:
                 continue
             path = validate_backup_path(remote_path[len(SYNC_ROOT) + 1:])
+            if is_system_project_path(path):
+                if not markers:
+                    raise RuntimeError('O backup não tem um marcador válido. Nenhum arquivo foi alterado.')
+                continue
             if entry.get('type') == 'tree':
                 continue
             if entry.get('type') != 'blob' or entry.get('mode') not in {'100644', '100755'}:

@@ -153,16 +153,26 @@ class BackupSyncTests(unittest.TestCase):
         uploads = [path for method, path, _ in api.calls if method == 'POST' and path.endswith('/git/blobs')]
         self.assertEqual(len(uploads), 1)
 
-    def test_default_guide_does_not_duplicate_a_guide_already_in_backup(self):
-        from app.services.onboarding_service import WELCOME_CONTENT
+    def test_system_guide_is_not_uploaded_restored_or_left_in_user_backup(self):
         folder = self.root / 'projetos' / 'guia-do-docs-local'
         folder.mkdir(parents=True)
-        (folder / 'index.md').write_text('<!-- docs-local: id=local revision=1 updated=today -->\n' + WELCOME_CONTENT, encoding='utf-8')
-        (folder / 'project.toml').write_text('name = "Guia"', encoding='utf-8')
-        api = MemoryGitHub({'projetos/guia-do-docs-local/index.md': b'# My edited guide', 'projetos/guia-do-docs-local/project.toml': b'name = "Meu guia"'})
+        (folder / 'index.md').write_text('# Local system guide', encoding='utf-8')
+        self.assertEqual(local_snapshot(self.root), {})
+        api = MemoryGitHub({'projetos/guia-do-docs-local/skill.md': b'# Old backup guide',
+                            'projetos/user/index.md': b'# User content'})
         self.synchronize(api)
-        self.assertEqual((folder / 'index.md').read_bytes(), b'# My edited guide')
-        self.assertEqual(len(local_snapshot(self.root)), 2)
+        self.assertFalse((folder / 'skill.md').exists())
+        self.assertNotIn(f'{SYNC_ROOT}/projetos/guia-do-docs-local/skill.md', api.files)
+        self.assertNotIn(f'{SYNC_ROOT}/projetos/guia-do-docs-local/index.md', api.files)
+        self.assertEqual(api.files[f'{SYNC_ROOT}/projetos/user/index.md'], b'# User content')
+        self.assertEqual((folder / 'index.md').read_text(encoding='utf-8'), '# Local system guide')
+
+    def test_system_files_never_enter_the_persistent_backup_queue(self):
+        files = {'projetos/guia-do-docs-local/skill.md': b'# System guide'}
+        binding = self.state.binding(REPOSITORY)
+        self.state.save_baseline(binding, files)
+        self.assertEqual(self.state.baseline(binding), {})
+        self.assertEqual(self.state.pending_paths(files, binding), [])
 
     def test_invalid_marker_prevents_restore_and_upload(self):
         api = MemoryGitHub({'a': b'Remote'})

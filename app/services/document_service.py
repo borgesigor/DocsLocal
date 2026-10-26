@@ -6,7 +6,8 @@ import uuid
 
 from app.core.exceptions import AppError
 from app.core.security import document_path, inside, project_folder_path
-from app.services.project_service import ensure_deletable, get_folder, now
+from app.services.project_service import ensure_deletable, ensure_editable, get_folder, now
+from app.services.project_files import iter_markdown_files, iter_project_entries
 from app.services.storage import atomic_write, repository_operation
 
 DOCUMENT_METADATA = re.compile(
@@ -37,10 +38,7 @@ def serialize_document(document_id: str, revision: int, content: str):
 
 
 def iter_documents(project_folder: Path):
-    documents_root = project_folder / 'docs'
-    candidates = [project_folder / 'index.md', *documents_root.rglob('*.md')]
-
-    for path in candidates:
+    for path in iter_markdown_files(project_folder):
         if not path.is_file() or path.is_symlink():
             continue
         try:
@@ -95,7 +93,8 @@ def find_document(project_folder: Path, document_id: str):
 
 @repository_operation
 def create_document(project_id: str, path: str, title: str = 'Sem título', content: str | None = None):
-    project_folder, _ = get_folder(project_id)
+    project_folder, project = get_folder(project_id)
+    ensure_editable(project)
     destination = document_path(project_folder, path)
     if destination.exists():
         raise AppError(409, 'path_exists', 'Já existe um documento nesse caminho.')
@@ -136,7 +135,8 @@ def update_document(
     expected_revision: int | None = None,
     new_path: str | None = None,
 ):
-    project_folder, _ = get_folder(project_id)
+    project_folder, project = get_folder(project_id)
+    ensure_editable(project)
     current_path, current_revision, _ = find_document(project_folder, document_id)
     if expected_revision is not None and expected_revision != current_revision:
         raise AppError(
@@ -194,9 +194,7 @@ def delete_document(project_id: str, document_id: str):
 def tree(project_id: str):
     project_folder, _ = get_folder(project_id)
     nodes = {}
-    docs_root = project_folder / 'docs'
-
-    for directory in docs_root.rglob('*'):
+    for directory in iter_project_entries(project_folder):
         if not directory.is_dir() or directory.is_symlink():
             continue
         try:
@@ -247,7 +245,8 @@ def tree(project_id: str):
 
 @repository_operation
 def create_folder(project_id: str, path: str):
-    project_folder, _ = get_folder(project_id)
+    project_folder, project = get_folder(project_id)
+    ensure_editable(project)
     folder_path = project_folder_path(project_folder, path)
     if folder_path.exists():
         raise AppError(409, 'path_exists', 'Já existe uma pasta nesse caminho.')

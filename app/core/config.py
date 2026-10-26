@@ -100,4 +100,5 @@ def load_config():
 CONFIG = load_config()
 REPO = Path(CONFIG['storage']['repository_path'])
 PROJECTS = REPO / 'projetos'
+SYSTEM_PROJECTS = Path(getattr(sys, '_MEIPASS', ROOT)) / 'system-projects'
 STATE = DATA / 'state'

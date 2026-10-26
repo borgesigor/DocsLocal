@@ -1,8 +1,8 @@
 # Dados de cada instalação
 
-O executável distribuído inclui somente um guia genérico de uso, criado localmente na primeira inicialização, sem documentos pessoais ou credenciais GitHub.
+O executável distribuído inclui um guia de uso como conteúdo de sistema, mantido em `system-projects/guia-do-docs-local/` no código do software, sem documentos pessoais ou credenciais GitHub. O aplicativo lê esses arquivos diretamente e não os gera na primeira inicialização.
 
-Cada conta do Windows usa sua própria pasta `%LOCALAPPDATA%\DocsLocal`: configuração em `config.toml`, documentos em `repository/` e estado local em `state/`. O projeto Guia do Docs Local pode ser editado ou arquivado; outros projetos e pastas são criados pelo próprio usuário. Executar o código-fonte usa `data/` dentro do checkout; essa pasta de dados deve permanecer privada.
+Cada conta do Windows usa sua própria pasta `%LOCALAPPDATA%\DocsLocal`: configuração em `config.toml`, documentos em `repository/` e estado local em `state/`. O Guia do Docs Local fica separado dos projetos do usuário, é somente leitura na interface e na API e não participa do backup. Seus arquivos fonte podem ser editados manualmente no repositório do software. Executar o código-fonte usa `data/` para os dados do usuário dentro do checkout; essa pasta de dados deve permanecer privada.
 
 O login GitHub pertence ao usuário conectado nessa instalação. O backup opcional usa um repositório privado da conta retornada pelo GitHub; o software valida a propriedade e a visibilidade antes de enviar dados. Os tokens ficam no cofre DPAPI da conta do Windows e não são incluídos na distribuição.
 

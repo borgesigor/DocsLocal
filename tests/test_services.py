@@ -19,6 +19,9 @@ class StorageTests(unittest.TestCase):
         self.projects_root.mkdir()
         self.project_root_patch = patch.object(projects, 'PROJECTS', self.projects_root)
         self.project_root_patch.start()
+        system_patch = patch.object(projects, 'SYSTEM_PROJECTS', self.projects_root.parent / 'system-projects')
+        system_patch.start()
+        self.addCleanup(system_patch.stop)
 
     def tearDown(self):
         self.project_root_patch.stop()
@@ -31,6 +34,27 @@ class StorageTests(unittest.TestCase):
         self.assertNotEqual(first_project['id'], second_project['id'])
         self.assertEqual(len(projects.list_projects()), 2)
         self.assertTrue((self.projects_root / first_project['id'] / 'index.md').is_file())
+
+    def test_tree_lists_empty_folders_and_markdown_moved_outside_docs(self):
+        project = projects.create_project('Filesystem')
+        folder = self.projects_root / project['id']
+        (folder / 'abc' / 'empty').mkdir(parents=True)
+        document = documents.create_document(project['id'], 'docs/skill.md', content='# Skill')
+        (folder / 'docs/skill.md').rename(folder / 'skill.md')
+        tree = {node['name']: node for node in documents.tree(project['id'])}
+        self.assertEqual(tree['docs']['children'], [])
+        self.assertEqual(tree['abc']['children'][0]['name'], 'empty')
+        self.assertEqual(tree['abc']['children'][0]['children'], [])
+        self.assertEqual(tree['skill.md']['path'], 'skill.md')
+        self.assertEqual(documents.read_document(project['id'], document['id'])['path'], 'skill.md')
+        self.assertEqual(projects.list_projects()[0]['document_count'], 2)
+
+    def test_markdown_and_folders_can_be_created_outside_docs(self):
+        project = projects.create_project('Any folder')
+        documents.create_folder(project['id'], 'abc/empty')
+        document = documents.create_document(project['id'], 'abc/note.md', content='# Note')
+        moved = documents.update_document(project['id'], document['id'], '# Note', 1, 'note.md')
+        self.assertEqual(moved['path'], 'note.md')
 
     def test_create_update_and_reject_stale_document_revision(self):
         project = projects.create_project('Projeto')

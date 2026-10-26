@@ -1,0 +1,8 @@
+id = "guia-do-docs-local"
+slug = "guia-do-docs-local"
+name = "Guia do Docs Local"
+description = "Primeiros passos, edição em Markdown e backup no GitHub."
+created_at = "2026-10-25T19:05:06+00:00"
+updated_at = "2026-10-26T01:38:24+00:00"
+archived = false
+protected = true

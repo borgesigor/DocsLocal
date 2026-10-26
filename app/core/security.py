@@ -49,31 +49,25 @@ def relative_doc_path(value: str) -> Path:
     if p.is_absolute() or any(part in {'..', '.'} for part in p.parts) or not p.parts:
         raise AppError(422, 'invalid_path', 'Use um caminho relativo dentro do projeto.')
     validate_path_components(p.parts)
+    if any(part.casefold() == '.git' for part in p.parts):
+        raise AppError(422, 'invalid_path', 'A pasta .git é reservada ao controle de versão.')
     return p
 
 def document_path(root: Path, value: str) -> Path:
-    """Resolve a document path while keeping documents in the Markdown area."""
+    """Resolve a Markdown path anywhere inside the project."""
     relative_path = relative_doc_path(value)
 
     if relative_path.as_posix().casefold() == 'index.md':
         relative_path = Path('index.md')
-    elif relative_path.parts[0] != 'docs':
-        raise AppError(422, 'invalid_path', 'Documentos devem ficar em index.md ou na pasta docs/.')
 
     if relative_path.suffix.casefold() != '.md':
         relative_path = relative_path.with_suffix('.md')
     elif relative_path.suffix != '.md':
         relative_path = relative_path.with_suffix('.md')
 
-    if relative_path.as_posix() != 'index.md' and len(relative_path.parts) < 2:
-        raise AppError(422, 'invalid_path', 'Informe um nome de arquivo dentro de docs/.')
     return inside(root, root / relative_path)
 
 def project_folder_path(root: Path, value: str) -> Path:
-    """Resolve a user-managed folder path inside docs/."""
+    """Resolve a user-managed folder anywhere inside the project."""
     relative_path = relative_doc_path(value)
-    if relative_path.parts[0] != 'docs':
-        raise AppError(422, 'invalid_path', 'Pastas devem ficar dentro de docs/.')
-    if len(relative_path.parts) < 2:
-        raise AppError(422, 'invalid_path', 'Não é possível alterar a pasta docs/.')
     return inside(root, root / relative_path)

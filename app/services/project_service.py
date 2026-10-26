@@ -4,15 +4,28 @@ import tomllib
 import uuid
 import shutil
 
-from app.core.config import PROJECTS
+from app.core.config import PROJECTS, SYSTEM_PROJECTS
+from app.core.system_projects import SYSTEM_PROJECT_IDS
 from app.core.exceptions import AppError
 from app.core.security import inside, safe_slug, validate_path_components
 from app.services.storage import atomic_write, repository_operation
+from app.services.project_files import iter_markdown_files
 from app.services.toml_writer import dumps_values
 
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+
+def system_project_folders() -> list[Path]:
+    if not SYSTEM_PROJECTS.is_dir():
+        return []
+    return [folder for folder in SYSTEM_PROJECTS.iterdir()
+            if folder.is_dir() and not folder.is_symlink()]
+
+
+def reserved_project_ids() -> set[str]:
+    return set(SYSTEM_PROJECT_IDS) | {folder.name for folder in system_project_folders()}
 
 
 @repository_operation
@@ -25,6 +38,8 @@ def load_project_metadata(folder: Path):
         raise ValueError('Project id/slug does not match directory')
     if not isinstance(project.get('archived', False), bool):
         raise ValueError('Invalid archived flag')
+    if folder.parent.resolve() == SYSTEM_PROJECTS.resolve():
+        project = {**project, 'system': True, 'protected': True, 'archived': False}
     return project
 
 
@@ -44,7 +59,10 @@ def list_projects(include_archived: bool = False):
     PROJECTS.mkdir(parents=True, exist_ok=True)
     projects = []
 
-    for folder in PROJECTS.iterdir():
+    system_folders = system_project_folders()
+    reserved_ids = set(SYSTEM_PROJECT_IDS) | {folder.name for folder in system_folders}
+    user_folders = [folder for folder in PROJECTS.iterdir() if folder.name not in reserved_ids]
+    for folder in [*system_folders, *user_folders]:
         if not folder.is_dir() or folder.is_symlink():
             continue
 
@@ -56,13 +74,7 @@ def list_projects(include_archived: bool = False):
         if project.get('archived', False) and not include_archived:
             continue
 
-        docs_folder = folder / 'docs'
-        document_count = sum(
-            1
-            for document in docs_folder.rglob('*.md')
-            if document.is_file() and not document.is_symlink()
-        )
-        document_count += int((folder / 'index.md').is_file())
+        document_count = sum(1 for _ in iter_markdown_files(folder))
         projects.append({**project, 'document_count': document_count})
 
     return sorted(projects, key=lambda project: project['name'].casefold())
@@ -74,7 +86,8 @@ def get_folder(project_id: str, include_archived: bool = False):
     if not project_id or any(character not in allowed_characters for character in project_id):
         raise AppError(404, 'project_not_found', 'Projeto não encontrado.')
 
-    folder = inside(PROJECTS, PROJECTS / project_id)
+    root = SYSTEM_PROJECTS if project_id in reserved_project_ids() else PROJECTS
+    folder = inside(root, root / project_id)
     project = read_project(folder)
     if project is None and include_archived:
         try:
@@ -92,8 +105,11 @@ def create_project(name: str, description: str = '', *, initial_content: str | N
     slug_base = safe_slug(name)
     validate_path_components((slug_base,))
     PROJECTS.mkdir(parents=True, exist_ok=True)
+    reserved_ids = reserved_project_ids()
     for suffix in range(1, 10001):
         slug = slug_base if suffix == 1 else f'{slug_base}-{suffix}'
+        if slug in reserved_ids:
+            continue
         folder = PROJECTS / slug
         try:
             folder.mkdir()
@@ -141,6 +157,8 @@ def initialize_project(
 def update_project(project_id: str, patch: dict):
     folder, project = get_folder(project_id, include_archived=True)
 
+    if patch:
+        ensure_editable(project)
     if patch.get('archived'):
         ensure_deletable(project)
 
@@ -174,3 +192,9 @@ def ensure_deletable(project: dict) -> None:
     if project.get('protected', False):
         raise AppError(403, 'protected_guide',
                        'O Guia do Docs Local e todos os seus itens não podem ser excluídos ou arquivados.')
+
+
+def ensure_editable(project: dict) -> None:
+    if project.get('protected', False):
+        raise AppError(403, 'protected_guide',
+                       'O Guia do Docs Local é somente leitura. Crie outro projeto para seus documentos.')

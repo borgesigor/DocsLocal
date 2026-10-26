@@ -256,7 +256,8 @@ async def create_folder(project_id: str, request: Request):
 @api.patch('/projects/{project_id}/folders')
 async def move_folder(project_id: str, request: Request):
     payload = FolderMove.model_validate(await request.json())
-    project_folder, _ = projects.get_folder(project_id)
+    project_folder, project = projects.get_folder(project_id)
+    projects.ensure_editable(project)
     source = project_folder_path(project_folder, payload.path)
     destination = project_folder_path(project_folder, payload.new_path)
 
@@ -312,7 +313,8 @@ async def upload_file(
     file: UploadFile = File(...),
     path: str | None = None,
 ):
-    project_folder, _ = projects.get_folder(project_id)
+    project_folder, project = projects.get_folder(project_id)
+    projects.ensure_editable(project)
     filename = Path(path or file.filename or 'upload').name
     if filename in {'', '.', '..'} or len(filename) > 180:
         raise AppError(422, 'invalid_filename', 'Nome de arquivo inválido.')

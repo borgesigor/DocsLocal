@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { request } from "@/lib/api"
+import { createUpdateClientId } from "@/lib/update-client-id"
 
 type UpdateStatus = {
   current_version: string
@@ -29,7 +30,7 @@ export function UpdateDialog({
   beforeInstall: () => Promise<boolean>
   hasUnsavedChanges: boolean
 }) {
-  const [clientId] = React.useState(() => crypto.randomUUID())
+  const [clientId] = React.useState(createUpdateClientId)
   const [status, setStatus] = React.useState<UpdateStatus | null>(null)
   const [seconds, setSeconds] = React.useState(30)
   const [preparing, setPreparing] = React.useState(false)

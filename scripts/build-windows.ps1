@@ -22,6 +22,7 @@ try {
         --name DocsLocal `
         --icon 'app/static/docs-local.ico' `
         --add-data 'app/static;app/static' `
+        --add-data 'system-projects;system-projects' `
         --collect-submodules uvicorn `
         --collect-submodules fastapi `
         @TlsArguments `

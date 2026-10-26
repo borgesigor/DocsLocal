@@ -31,7 +31,7 @@ Você pode usar **[http://docs.local](http://docs.local)** para abrir o aplicati
 
 O aplicativo precisa estar em execução. Após configurar, a bandeja passa a abrir esse endereço quando a API responde nele. O endereço alternativo `http://127.0.0.1:8765` continua disponível. Para executar pelo código, também é possível rodar `app/static/configure-local-url.ps1` no PowerShell como administrador, informando `-Port` e `-ServerHost` se necessário. Se mudar a porta do servidor, ajuste o encaminhamento local antes de reutilizar o alias.
 
-A API pode ser consultada em [http://docs.local/docs](http://docs.local/docs), com contrato em `/openapi.json`. O guia padrão explica esse endereço e disponibiliza a skill completa para agentes em `docs/skill/SKILL.md`, acompanhada de `references/http-workflow.md` e `references/api-documentation.md`.
+A API pode ser consultada em [http://docs.local/docs](http://docs.local/docs), com contrato em `/openapi.json`. O guia padrão é lido diretamente de `system-projects/guia-do-docs-local/`, com **Bem-vindo ao Docs Local** em `index.md` e a skill em `skill.md`. A árvore mostra a hierarquia real das pastas, inclusive pastas vazias, e encontra Markdown na raiz ou em qualquer subpasta. Ao mover um arquivo manualmente, atualize a página e os links afetados. Cabeçalhos YAML no início do Markdown são exibidos em um bloco de metadados, preservando o conteúdo original do arquivo.
 
 ## Login com GitHub
 
@@ -47,7 +47,7 @@ Ao conectar a conta ou iniciar o aplicativo autenticado, o Docs Local consulta o
 
 A instalação vazia nunca é usada como ordem para apagar os arquivos remotos. O aplicativo compara os hashes de cada arquivo com a última versão sincronizada, vinculada ao repositório, à branch e à pasta local. Novos documentos e edições locais pendentes são preservados e enviados. Exclusões locais só são publicadas quando o arquivo era conhecido pela sincronização anterior e não recebeu uma edição remota concorrente.
 
-Em alterações concorrentes no mesmo documento, a versão do GitHub permanece no caminho original e a versão local é preservada em um arquivo `*.conflito-local-<hash>.md`, com uma identidade distinta. Renomeações e novas tentativas usam as identidades e hashes para evitar duplicações. O guia genérico de uma instalação nova não duplica um guia já existente no backup.
+Em alterações concorrentes no mesmo documento, a versão do GitHub permanece no caminho original e a versão local é preservada em um arquivo `*.conflito-local-<hash>.md`, com uma identidade distinta. Renomeações e novas tentativas usam as identidades e hashes para evitar duplicações. O guia de sistema é excluído do envio e da restauração. Na próxima sincronização, cópias do guia gravadas por versões antigas são removidas da árvore atual do backup, permanecendo recuperáveis pelo histórico do Git.
 
 A fila fica gravada em `state/github-sync/` e sobrevive a falhas, atualizações e reinicializações. As verificações periódicas comparam arquivos locais; uma fila vazia não gera consultas ao repositório. Durante uma sincronização real, somente blobs alterados ou ausentes são transferidos. Falhas são repetidas com intervalo crescente. Alterações feitas em outro computador são verificadas na próxima abertura ou conexão da conta.
 
@@ -91,7 +91,7 @@ gh release create v1.1.0 dist/DocsLocal.exe dist/DocsLocal.exe.sha256 --target m
 
 Configuração e documentos ficam localmente em `%LOCALAPPDATA%\DocsLocal` para o `.exe`, ou em `data/` quando executado a partir do código. O cofre OAuth usa Windows DPAPI.
 
-Cada instalação recebe o projeto **Guia do Docs Local**, a documentação padrão do app, com instruções offline e a skill Markdown para agentes. **O projeto e todos os seus itens não podem ser excluídos ou arquivados pela interface nem pela API**, incluindo documentos, pastas e anexos adicionados ao guia. Edições são preservadas ao reiniciar. Instalações anteriores recebem a proteção e os arquivos ausentes da skill; um guia arquivado é reativado e um guia ausente é recriado. Cada usuário configura seu próprio login e backup. Consulte [PRIVACY.md](PRIVACY.md) para os detalhes do isolamento por conta do Windows.
+O projeto **Guia do Docs Local** é conteúdo de sistema mantido em `system-projects/guia-do-docs-local/` no repositório oficial e incluído no executável. **Ele é somente leitura na interface e na API**, mas seus arquivos fonte podem ser editados, movidos ou excluídos manualmente pelo VS Code e commitados junto ao software. A inicialização não gera documentos, não repõe arquivos excluídos e não sobrescreve edições manuais. O guia não ocupa a pasta de projetos do usuário e não participa do backup. Uma cópia antiga sob `data/repository/projetos/guia-do-docs-local/` é ignorada pela listagem e pela sincronização. Cada usuário configura seu próprio login e backup. Consulte [PRIVACY.md](PRIVACY.md) para os detalhes do isolamento por conta do Windows.
 
 ## Desenvolvimento
 

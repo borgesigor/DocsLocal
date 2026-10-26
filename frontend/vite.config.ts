@@ -18,6 +18,7 @@ export default defineConfig(({ command }) => ({
   server: {
     host: "127.0.0.1",
     proxy: {
+      "/static": "http://127.0.0.1:8765",
       "/api": {
         target: "http://127.0.0.1:8765",
         changeOrigin: true,

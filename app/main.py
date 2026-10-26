@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.convertors import Convertor, register_url_convertor
 
 from app.api.routes import api
 from app.core.config import CONFIG, PROJECTS, REPO, STATE
@@ -18,7 +19,6 @@ from app.core.security import document_path
 from app.services import document_service, project_service
 from app.services.github_service import sync_manager
 from app.services.instance_lock import InstanceLock
-from app.services.onboarding_service import ensure_welcome_documentation
 from app.services.storage import atomic_write
 from app.services.update_service import update_manager
 from app.version import VERSION
@@ -53,7 +53,6 @@ async def lifespan(app: FastAPI):
         if not gitignore.exists():
             atomic_write(gitignore, '.DS_Store\nThumbs.db\n')
 
-        ensure_welcome_documentation(STATE)
         sync_manager.resume()
         update_manager.prepare_shutdown = sync_manager.prepare_shutdown
         update_manager.resume = sync_manager.resume
@@ -158,9 +157,22 @@ def project_index_view(project_id: str):
     return document_view(project_id, 'index.md')
 
 
-@app.get('/{project_id}/docs/{path:path}', include_in_schema=False)
+class MarkdownPathConvertor(Convertor):
+    regex = r'.+\.[mM][dD]'
+
+    def convert(self, value: str) -> str:
+        return value
+
+    def to_string(self, value: str) -> str:
+        return value
+
+
+register_url_convertor('markdown', MarkdownPathConvertor())
+
+
+@app.get('/{project_id}/{path:markdown}', include_in_schema=False)
 def project_document_view(project_id: str, path: str):
-    return document_view(project_id, f'docs/{path}')
+    return document_view(project_id, path)
 
 
 @app.get('/{project_id}', include_in_schema=False)

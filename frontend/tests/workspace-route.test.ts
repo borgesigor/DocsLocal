@@ -59,10 +59,18 @@ test("path addresses take precedence over stale legacy parameters", () => {
   assert.equal(route.documentId, null)
 })
 
-test("rejects invalid path encodings and paths outside document areas", () => {
+test("reads Markdown at the project root and in any folder", () => {
+  for (const path of ["skill.md", "abc/note.md", "assets/note.md"]) {
+    const route = readWorkspaceRoute(new URL(`http://docs.local/demo-project/${path}`))
+    assert.equal(route.invalid, false)
+    assert.equal(route.documentPath, path)
+  }
+})
+
+test("rejects invalid path encodings and non-Markdown routes", () => {
   for (const path of [
     "/demo-project/docs/%ZZ.md",
-    "/demo-project/assets/file.md",
+    "/demo-project/project.toml",
     "/demo-project/docs/a%2Fb.md",
     "/demo-project/docs/a%5Cb.md",
   ]) {
