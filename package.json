@@ -1,0 +1,7 @@
+{
+  "name": "docs-local",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs"
+  }
+}

@@ -1,6 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+EXECUTABLE="$ROOT/DocsLocal"
+if [ ! -x "$EXECUTABLE" ]; then
+    echo 'Autostart is available only for a packaged production executable.' >&2
+    exit 1
+fi
 UNIT_ROOT="$(systemd-escape --path -- "$ROOT")"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$UNIT_DIR"
@@ -12,7 +17,7 @@ After=default.target
 [Service]
 Type=simple
 WorkingDirectory=$UNIT_ROOT
-ExecStart=$UNIT_ROOT/.venv/bin/python -m app.main
+ExecStart=$EXECUTABLE
 Restart=on-failure
 RestartSec=5
 
@@ -21,4 +26,4 @@ WantedBy=default.target
 EOF
 systemctl --user daemon-reload
 systemctl --user enable --now docs-local.service
-echo 'Inicialização automática instalada para este usuário.'
+echo 'Production autostart installed.'

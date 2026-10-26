@@ -1041,7 +1041,7 @@ function App() {
       </Sidebar>
 
       <SidebarInset className="h-full min-h-0 min-w-0 overflow-hidden bg-background">
-        <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border px-5 sm:px-8">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border px-5 sm:pl-4 sm:pr-8">
           <div className="flex min-w-0 items-center gap-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">
@@ -1802,7 +1802,8 @@ type SyncPresentation = {
   label: string
   variant: "secondary" | "outline" | "destructive" | "default"
   icon: LucideIcon
-  spinning?: boolean
+  spinning?: boolean,
+  className?: string
 }
 
 function syncPresentation(status: SyncStatus): SyncPresentation {
@@ -1860,6 +1861,7 @@ function syncPresentation(status: SyncStatus): SyncPresentation {
       label: "Sincronizado no GitHub",
       variant: "default",
       icon: CircleCheck,
+      className: "bg-green-800 text-white"
     }
   }
 
@@ -1889,7 +1891,7 @@ function SyncStatusIndicator({ status }: { status: SyncStatus }) {
   return (
     <Badge
       aria-live="polite"
-      className="w-full justify-start"
+      className={`w-full justify-start py-3 ${presentation.className}`}
       title={
         status.last_error ??
         (lastSync ? `Última sincronização: ${lastSync}` : undefined)
